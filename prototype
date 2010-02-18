@@ -1,0 +1,203 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+# ( $left, $right ) = $rule..match
+# if ( $rule.interrupt )
+# 
+
+use Test::Most;
+
+plan qw/no_plan/;
+
+ok( 1 );
+
+package PtD;
+
+use Any::Moose;
+
+package PtD::Rule;
+
+use Any::Moose;
+
+package PtD::Rule::Regexp;
+
+use Any::Moose;
+
+has regexp => qw/ is ro required 1 isa Regexp /;
+
+sub match {
+    my $self = shift;
+    my $path = shift;
+
+    return unless $path =~ $self->regexp;
+    return eval q/$'/;
+}
+
+package PtD::Switch;
+
+use Any::Moose;
+
+has rule => qw/ is ro /;
+has sequence => qw/ is ro required 1 isa ArrayRef /, default => sub { [] };
+
+sub add {
+    my $self = shift;
+    my $node = shift;
+
+    push @{ $self->sequence }, $node;
+
+    return $node;
+}
+
+sub dispatch {
+    my $self = shift;
+    my $ctx = shift;
+
+    my $starting_path = my $remaining_path = $ctx->path;
+    if ( my $rule = $self->rule ) {
+        return unless defined( $remaining_path = $rule->match( $remaining_path ) );
+    }
+    $ctx->starting_path( $starting_path );
+    $ctx->remaining_path( $remaining_path );
+    $ctx->path( $remaining_path );
+
+    for my $node (@{ $self->sequence }) {
+        $node->dispatch( $ctx );
+    }
+
+    $ctx->starting_path( undef );
+    $ctx->remaining_path( undef );
+}
+
+package PtD::Item;
+
+use Any::Moose;
+
+has data => qw/ is ro /;
+
+sub dispatch {
+    my $self = shift;
+    my $ctx = shift;
+
+    $ctx->visit( $self->data, $self );
+}
+
+use Any::Moose;
+
+package PtD::Context;
+
+use Any::Moose;
+
+has path => qw/ is rw isa Str /;
+has starting_path => qw/ is rw isa Maybe[Str] /;
+has remaining_path => qw/ is rw isa Maybe[Str] /;
+
+has visitor => qw/ is ro required 1 isa CodeRef /; 
+
+sub visit {
+    my ( $self, $data, $item ) = @_;
+    $self->visitor->( $self, $data, $item );
+}
+
+package main;
+
+{
+    is( PtD::Rule::Regexp->new( regexp => qr/apple\/?/ )->match( 'apple/banana' ), 'banana' );
+}
+
+sub path(@) {
+    my $rule = shift;
+    $rule = PtD::Rule::Regexp->new( regexp => $rule ) if $rule;
+    my $branch = PtD::Switch->new( rule => $rule );
+    $branch->add( $_ ) for @_;
+    return $branch;
+}
+
+sub item($) {
+    my $data = shift;
+    return PtD::Item->new( data => $data );
+}
+
+sub action(&) {
+    return item( @_ );
+}
+
+sub interrupt(&) {
+    my $data = shift;
+    return item( $data );
+}
+
+{
+    my @sequence;
+
+    my $ctx = PtD::Context->new( visitor => sub {
+        my $self = shift; 
+        push @sequence, shift;
+    } );
+    my $root = PtD::Switch->new();
+
+    my $apple = $root->add(
+        PtD::Switch->new( rule => PtD::Rule::Regexp->new( regexp => qr/apple\/?/ ), ) );
+
+    $apple->add( PtD::Item->new( data => 'Apple' ) );
+
+    $ctx->path( "apple" );
+    $root->dispatch( $ctx );
+
+    cmp_deeply( \@sequence, [qw/ Apple /] );
+}
+
+{
+    my $root = path( undef,
+        path( qr/apple\/?/,
+            item( 'Apple' ), 
+            path( qr/banana\/?/, 
+                item( 'Apple+Banana' ),
+            ),
+            interrupt {
+                my $ctx = shift;
+                $ctx->path( 'grape' ) if $ctx->path;
+            },
+            path( qr/cherry\/?/, 
+                item( 'Apple+Cherry' ),
+            ),
+            path( qr/grape\/?/, 
+                item( 'Apple+Grape' ),
+            ),
+        ),
+    );
+
+    my @sequence;
+    my $ctx = PtD::Context->new( visitor => sub {
+        my $self = shift; 
+        my $data = shift;
+        if ( ref $data eq 'CODE' ) {
+            $data->( $self );
+        }
+        else {
+            push @sequence, $data;
+        }
+    } );
+    
+    undef @sequence;
+    $ctx->path( "apple" );
+    $root->dispatch( $ctx );
+    cmp_deeply( \@sequence, [qw/ Apple /] );
+
+    undef @sequence;
+    $ctx->path( "apple/banana" );
+    $root->dispatch( $ctx );
+    cmp_deeply( \@sequence, [qw/ Apple Apple+Banana /] );
+
+    undef @sequence;
+    $ctx->path( "cherry" );
+    $root->dispatch( $ctx );
+    cmp_deeply( \@sequence, [] );
+
+    undef @sequence;
+    $ctx->path( "apple/cherry" );
+    $root->dispatch( $ctx );
+    cmp_deeply( \@sequence, [qw/ Apple Apple+Grape /] );
+}
