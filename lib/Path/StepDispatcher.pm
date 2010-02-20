@@ -70,13 +70,34 @@ use Any::Moose;
 
 has dispatcher => qw/ is ro required 1 isa Path::StepDispatcher /;
 has visitor => qw/ is ro required 1 isa CodeRef /; 
-has path => qw/ is rw isa Str /;
-#has target_path => qw/ is rw isa Maybe[Str] /;
-has leftover_path => qw/ is rw isa Maybe[Str] /;
+has stack => qw/ is ro required 1 isa ArrayRef /, default => sub { [] };
+has path => qw/ accessor target_path isa Str /;
+
+sub path {
+    my $self = shift;
+    if ( my $local = $self->local ) {
+        return $local->path( @_ );
+    }
+    return $self->target_path( @_ );
+}
+
+sub local {
+    return shift->stack->[-1];
+}
 
 sub visit {
     my ( $self, $data, $item ) = @_;
     $self->visitor->( $self, $data, $item );
+}
+
+sub push {
+    my $self = shift;
+    push @{ $self->stack }, $self->dispatcher->build_switch_context( context => $self, @_ );
+}
+
+sub pop {
+    my $self = shift;
+    pop @{ $self->stack };
 }
 
 package Path::StepDispatcher::SwitchContext;
@@ -84,6 +105,12 @@ package Path::StepDispatcher::SwitchContext;
 use Any::Moose;
 
 has context => qw/ is ro required 1 isa Path::StepDispatcher::Context /;
+has match => qw/ is ro required 1 isa Path::StepDispatcher::Match /;
+has path => qw/ is rw isa Str lazy_build 1 /;
+sub _build_path {
+    my $self = shift;
+    return $self->match->leftover_path;
+}
 
 package Path::StepDispatcher::Match;
 
@@ -139,13 +166,18 @@ sub dispatch {
     my $self = shift;
     my $ctx = shift;
 
+    my $path = $ctx->path;
+
     my $match;
     if ( my $rule = $self->rule ) {
-        my $path = $ctx->path;
         return unless $match = $rule->match( $path );
-        $match = $ctx->dispatcher->build_match( %$match, target_path => $path );
-        $ctx->path( $match->leftover_path );
     }
+    else {
+        $match = { leftover_path => $path };
+    }
+    $match = $ctx->dispatcher->build_match( %$match, target_path => $path );
+
+    $ctx->push( match => $match );
 
     for my $node (@{ $self->sequence }) {
         $node->dispatch( $ctx );
