@@ -10,7 +10,7 @@ plan qw/no_plan/;
 use Path::StepDispatcher;
 
 {
-    is( Path::StepDispatcher::Rule::Regexp->new( regexp => qr/apple\/?/ )->match( 'apple/banana' )->remaining_path, 'banana' );
+    is( Path::StepDispatcher::Rule::Regexp->new( regexp => qr/apple\/?/ )->match( 'apple/banana' )->{leftover_path}, 'banana' );
 }
 
 sub path(@) {
@@ -26,10 +26,6 @@ sub item($) {
     return Path::StepDispatcher::Item->new( data => $data );
 }
 
-sub action(&) {
-    return item( @_ );
-}
-
 sub interrupt(&) {
     my $data = shift;
     return item( $data );
@@ -38,19 +34,18 @@ sub interrupt(&) {
 {
     my @sequence;
 
-    my $ctx = Path::StepDispatcher::Context->new( visitor => sub {
+    my $root = Path::StepDispatcher::Switch->new();
+
+    my $dispatcher = Path::StepDispatcher->new( root => $root, visitor => sub {
         my $self = shift; 
         push @sequence, shift;
     } );
-    my $root = Path::StepDispatcher::Switch->new();
 
     my $apple = $root->add(
         Path::StepDispatcher::Switch->new( rule => Path::StepDispatcher::Rule::Regexp->new( regexp => qr/apple\/?/ ), ) );
-
     $apple->add( Path::StepDispatcher::Item->new( data => 'Apple' ) );
 
-    $ctx->path( "apple" );
-    $root->dispatch( $ctx );
+    $dispatcher->dispatch( "apple" );
 
     cmp_deeply( \@sequence, [qw/ Apple /] );
 }
@@ -76,7 +71,7 @@ sub interrupt(&) {
     );
 
     my @sequence;
-    my $ctx = Path::StepDispatcher::Context->new( visitor => sub {
+    my $dispatcher = Path::StepDispatcher->new( root => $root, visitor => sub {
         my $self = shift; 
         my $data = shift;
         if ( ref $data eq 'CODE' ) {
@@ -88,23 +83,19 @@ sub interrupt(&) {
     } );
     
     undef @sequence;
-    $ctx->path( "apple" );
-    $root->dispatch( $ctx );
+    $dispatcher->dispatch( "apple" );
     cmp_deeply( \@sequence, [qw/ Apple /] );
 
     undef @sequence;
-    $ctx->path( "apple/banana" );
-    $root->dispatch( $ctx );
+    $dispatcher->dispatch( "apple/banana" );
     cmp_deeply( \@sequence, [qw/ Apple Apple+Banana /] );
 
     undef @sequence;
-    $ctx->path( "cherry" );
-    $root->dispatch( $ctx );
+    $dispatcher->dispatch( "cherry" );
     cmp_deeply( \@sequence, [] );
 
     undef @sequence;
-    $ctx->path( "apple/cherry" );
-    $root->dispatch( $ctx );
+    $dispatcher->dispatch( "apple/cherry" );
     cmp_deeply( \@sequence, [qw/ Apple Apple+Grape /] );
 }
 
