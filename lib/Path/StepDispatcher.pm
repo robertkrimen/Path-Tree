@@ -15,9 +15,10 @@ has build_switch_context =>
 has build_match =>
     qw/ accessor _build_match default Path::StepDispatcher::Match /;
 
-has root => qw/ is rw required 1 isa Path::StepDispatcher::Switch /;
+has root => qw/ is rw required 1/;
 
-has visitor => qw/ is ro required 1 isa CodeRef /, default => sub { shift->builtin_visit( @_ ) };
+has visitor => qw/ is ro required 1 isa CodeRef /,
+    default => sub { my $self = shift; sub { $self->builtin_visit( @_ ) } };
 
 sub dispatch {
     my $self = shift;
@@ -287,7 +288,7 @@ sub _parse {
     return unless $parse;
 
     if ( ref $parse eq 'CODE' ) {
-        return $parse->( @_ );
+        return $parse->( $self, @_ );
     }
     else {
         croak "Do not know how to parse with ($parse)";
