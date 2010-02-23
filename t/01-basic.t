@@ -9,41 +9,27 @@ plan qw/no_plan/;
 
 use Path::StepDispatcher;
 
+my $builder = Path::StepDispatcher::Builder->new;
+
 {
     is( Path::StepDispatcher::Rule::Regexp->new( regexp => qr/apple\/?/ )->match( 'apple/banana' )->{leftover_path}, 'banana' );
 }
 
-sub path(@) {
-    my $rule = shift;
-    $rule = Path::StepDispatcher::Rule::Regexp->new( regexp => $rule ) if $rule;
-    my $branch = Path::StepDispatcher::Switch->new( rule => $rule );
-    $branch->add( $_ ) for @_;
-    return $branch;
-}
-
-sub item($) {
-    my $data = shift;
-    return Path::StepDispatcher::Item->new( data => $data );
-}
-
-sub interrupt(&) {
-    my $data = shift;
-    return item( $data );
+sub path (@) {
+    return $builder->parse_switch( @_ );
 }
 
 {
     my @sequence;
 
-    my $root = Path::StepDispatcher::Switch->new();
-
-    my $dispatcher = Path::StepDispatcher->new( root => $root, visitor => sub {
-        my $self = shift; 
+    my $dispatcher = Path::StepDispatcher->new( root => path, visitor => sub {
+        my $ctx = shift; 
         push @sequence, shift;
     } );
 
-    my $apple = $root->add(
-        Path::StepDispatcher::Switch->new( rule => Path::StepDispatcher::Rule::Regexp->new( regexp => qr/apple\/?/ ), ) );
-    $apple->add( Path::StepDispatcher::Item->new( data => 'Apple' ) );
+    $dispatcher->root->add(
+        path( qr/apple\/?/, 'Apple' ),
+    );
 
     $dispatcher->dispatch( "apple" );
 
@@ -53,29 +39,29 @@ sub interrupt(&) {
 {
     my $root = path( undef,
         path( qr/apple\/?/,
-            item( 'Apple' ), 
+            'Apple',
             path( qr/banana\/?/, 
-                item( 'Apple+Banana' ),
+                'Apple+Banana',
             ),
-            interrupt {
+            sub {
                 my $ctx = shift;
-                $ctx->path( 'grape' ) if $ctx->path;
+                $ctx->path( 'grape' ) if $ctx->path; # Always goes to the grape branch
             },
             path( qr/cherry\/?/, 
-                item( 'Apple+Cherry' ),
+                'Apple+Cherry',
             ),
             path( qr/grape\/?/, 
-                item( 'Apple+Grape' ),
+                'Apple+Grape',
             ),
         ),
     );
 
     my @sequence;
     my $dispatcher = Path::StepDispatcher->new( root => $root, visitor => sub {
-        my $self = shift; 
+        my $ctx = shift; 
         my $data = shift;
         if ( ref $data eq 'CODE' ) {
-            $data->( $self );
+            $data->( $ctx );
         }
         else {
             push @sequence, $data;

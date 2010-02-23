@@ -17,7 +17,7 @@ has build_match =>
 
 has root => qw/ is rw required 1 isa Path::StepDispatcher::Switch /;
 
-has visitor => qw/ is ro required 1 isa CodeRef /; 
+has visitor => qw/ is ro required 1 isa CodeRef /, default => sub { shift->builtin_visit( @_ ) };
 
 sub dispatch {
     my $self = shift;
@@ -34,16 +34,36 @@ sub dispatch {
     $self->root->dispatch( $ctx );
 }
 
+sub builtin_visit {
+    my $self = shift;
+    my $ctx = shift;
+    my $data = shift;
+
+    if ( ref $data eq 'CODE' ) {
+        $data->( $ctx );
+    }
+    else {
+        $data = "undef" unless defined $data;
+        croak "Do not know how to visit data ($data)";
+    }
+}
+
+# $dispatcher->build_context( ... )
+# $build->( $dispatcher, ... )
 sub build_context {
     my $self = shift;
     return $self->_build( $self->_build_context, @_ );
 }
 
+# $dispatcher->build_switch_context( ... )
+# $build->( $dispatcher, ... )
 sub build_switch_context {
     my $self = shift;
     return $self->_build( $self->_build_switch_context, @_ );
 }
 
+# $dispatcher->build_match( ... )
+# $build->( $dispatcher, ... )
 sub build_match {
     my $self = shift;
     return $self->_build( $self->_build_match, @_ );
@@ -51,16 +71,16 @@ sub build_match {
 
 sub _build {
     my $self = shift;
-    my $builder = shift;
+    my $build = shift;
 
-    if ( ref $builder eq 'CODE' ) {
-        return $builder->( @_ );
+    if ( ref $build eq 'CODE' ) {
+        return $build->( $self, @_ );
     }
-    elsif ( $builder && ref $builder eq '' ) {
-        $builder->new( @_ ); # TODO Wrap this?
+    elsif ( $build && ref $build eq '' ) {
+        $build->new( @_ ); # TODO Wrap this?
     }
     else {
-        croak "Do not know how to builder with ($builder)";
+        croak "Do not know how to build with $build";
     }
 }
 
@@ -86,8 +106,8 @@ sub local {
 }
 
 sub visit {
-    my ( $self, $data, $item ) = @_;
-    $self->visitor->( $self, $data, $item );
+    my ( $self, $data ) = @_;
+    $self->visitor->( $self, $data );
 }
 
 sub push {
@@ -155,11 +175,10 @@ has sequence => qw/ is ro required 1 isa ArrayRef /, default => sub { [] };
 
 sub add {
     my $self = shift;
-    my $node = shift;
 
-    push @{ $self->sequence }, $node;
+    push @{ $self->sequence }, @_;
 
-    return $node;
+    return $self;
 }
 
 sub dispatch {
@@ -180,23 +199,14 @@ sub dispatch {
     $ctx->push( match => $match );
 
     for my $node (@{ $self->sequence }) {
-        $node->dispatch( $ctx );
+        if ( blessed $node && $node->can( 'dispatch' ) ) {
+            $node->dispatch( $ctx );
+        }
+        else {
+            $ctx->visit( $node );
+        }
     }
 }
-
-package Path::StepDispatcher::Item;
-
-use Any::Moose;
-
-has data => qw/ is ro /;
-
-sub dispatch {
-    my $self = shift;
-    my $ctx = shift;
-    $ctx->visit( $self->data, $self );
-}
-
-use Any::Moose;
 
 package Path::StepDispatcher::Builder;
 
@@ -204,25 +214,30 @@ use Any::Moose;
 use Path::StepDispatcher::Carp;
 
 has $_ => ( accessor => "_$_" )
-    for qw/ parse_rule parse_item build_switch /;
+    for qw/ parse_rule parse_switch /;
 
+has build_switch =>
+    qw/ accessor _build_switch default Path::StepDispatcher::Switch /;
+
+# $builder->parse_rule( ... )
+# $parse->( $builder, ... )
 sub parse_rule {
-    my $self = shift;
+    my $builder = shift;
     my $input = shift;
 
     my $rule;
 
-    $rule = $self->_parse( $self->_parse_rule, $input );
+    $rule = $builder->_parse( $builder->_parse_rule, $input );
     return $rule if defined $rule; # TODO Check if $rule does Rule
 
-    $rule = $self->builtin_parse_rule( $input );
+    $rule = $builder->builtin_parse_rule( $input );
     return $rule if defined $rule;
 
-    croak "Unable to parse rule ($input)";
+    return undef;
 }
 
 sub builtin_parse_rule {
-    my $self = shift;
+    my $builder = shift;
     my $input = shift;
 
     if ( ref $input eq 'Regexp' ) {
@@ -232,11 +247,34 @@ sub builtin_parse_rule {
     return undef;
 }
 
-sub parse_item {
-    my $self = shift;
-    return $self->_parse( $self->_parse_item, @_ );
+# $builder->parse_switch( ... )
+# $parse->( $builder, ... )
+sub parse_switch {
+    my $builder = shift;
+    my @input = @_;
+
+    my $switch;
+
+    $switch = $builder->_parse( $builder->_parse_switch, @input );
+    return $switch if defined $switch; # TODO Check if $switch does Rule
+
+    $switch = $builder->builtin_parse_switch( @input );
+    return $switch if defined $switch;
+
+    croak "Unable to parse switch from input";
 }
 
+sub builtin_parse_switch {
+    my $builder = shift;
+    my $rule = shift;
+    my @add = @_;
+
+    my $switch = $builder->build_switch( rule => $builder->parse_rule( $rule ) );
+    $switch->add( @add ) if @add;
+    return $switch;
+}
+
+# TODO Die if unable to build
 sub build_switch {
     my $self = shift;
     return $self->_build( $self->_build_switch, @_ );
@@ -244,28 +282,30 @@ sub build_switch {
 
 sub _parse {
     my $self = shift;
-    my $parser = shift;
+    my $parse = shift;
 
-    if ( ref $parser eq 'CODE' ) {
-        return $parser->( @_ );
+    return unless $parse;
+
+    if ( ref $parse eq 'CODE' ) {
+        return $parse->( @_ );
     }
     else {
-        croak "Do not know how to parse with ($parser)";
+        croak "Do not know how to parse with ($parse)";
     }
 }
 
 sub _build {
     my $self = shift;
-    my $builder = shift;
+    my $build = shift;
 
-    if ( ref $builder eq 'CODE' ) {
-        return $builder->( @_ );
+    if ( ref $build eq 'CODE' ) {
+        return $build->( @_ );
     }
-    elsif ( $builder && ref $builder eq '' ) {
-        $builder->new( @_ ); # TODO Wrap this?
+    elsif ( $build && ref $build eq '' ) {
+        $build->new( @_ ); # TODO Wrap this?
     }
     else {
-        croak "Do not know how to builder with ($builder)";
+        croak "Do not know how to build with ($build)";
     }
 }
 
