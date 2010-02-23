@@ -161,6 +161,8 @@ sub match {
 
     undef @arguments unless defined $1; # Just got the success indicator
 
+    $leftover_path = '' unless defined $leftover_path;
+
     return {
         leftover_path => $leftover_path,
         match_arguments => \@arguments,
