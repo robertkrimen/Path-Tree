@@ -248,11 +248,14 @@ sub builtin_parse_rule {
     my $builder = shift;
     my $input = shift;
 
-    if ( ref $input eq 'Regexp' ) {
+    if ( ! defined $input ) {
+        return undef;
+    }
+    elsif ( ref $input eq 'Regexp' ) {
         return Path::StepDispatcher::Rule::Regexp->new( regexp => $input );
     }
 
-    return undef;
+    croak "Do not know how to parse rule input ($input)";
 }
 
 # $builder->parse_switch( ... )
