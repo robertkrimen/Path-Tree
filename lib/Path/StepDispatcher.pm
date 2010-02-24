@@ -156,12 +156,17 @@ sub match {
     my $self = shift;
     my $path = shift;
 
-    return unless my @arguments = ( $path =~ $self->regexp );
+    # TODO This is done because of issues with $'
+    # Also because it seems to be the sane thing you would want to do
+    # (Not match a switching action in the middle)
+    # What about leading space, delimiter garbage, etc.?
+    my $regexp = $self->regexp;
+    $regexp = qr/^$regexp/;
+
+    return unless my @arguments = $path =~ $regexp;
     my $leftover_path = eval q{$'};
 
     undef @arguments unless defined $1; # Just got the success indicator
-
-    $leftover_path = '' unless defined $leftover_path;
 
     return {
         leftover_path => $leftover_path,
