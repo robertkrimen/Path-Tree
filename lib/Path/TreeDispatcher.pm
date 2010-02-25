@@ -1,19 +1,19 @@
-package Path::StepDispatcher;
+package Path::TreeDispatcher;
 
 use strict;
 use warnings;
 
 use Any::Moose;
-use Path::StepDispatcher::Carp;
+use Path::TreeDispatcher::Carp;
 
 has build_context =>
-    qw/ accessor _build_context default Path::StepDispatcher::Context /;
+    qw/ accessor _build_context default Path::TreeDispatcher::Context /;
 
-has build_switch_context =>
-    qw/ accessor _build_switch_context default Path::StepDispatcher::SwitchContext /;
+has build_local_context =>
+    qw/ accessor _build_local_context default Path::TreeDispatcher::LocalContext /;
 
 has build_match =>
-    qw/ accessor _build_match default Path::StepDispatcher::Match /;
+    qw/ accessor _build_match default Path::TreeDispatcher::Match /;
 
 has root => qw/ is rw required 1/;
 
@@ -56,11 +56,11 @@ sub build_context {
     return $self->_build( $self->_build_context, @_ );
 }
 
-# $dispatcher->build_switch_context( ... )
+# $dispatcher->build_local_context( ... )
 # $build->( $dispatcher, ... )
-sub build_switch_context {
+sub build_local_context {
     my $self = shift;
-    return $self->_build( $self->_build_switch_context, @_ );
+    return $self->_build( $self->_build_local_context, @_ );
 }
 
 # $dispatcher->build_match( ... )
@@ -78,18 +78,18 @@ sub _build {
         return $build->( $self, @_ );
     }
     elsif ( $build && ref $build eq '' ) {
-        $build->new( @_ ); # TODO Wrap this?
+        $build->new( @_ );
     }
     else {
         croak "Do not know how to build with $build";
     }
 }
 
-package Path::StepDispatcher::Context;
+package Path::TreeDispatcher::Context;
 
 use Any::Moose;
 
-has dispatcher => qw/ is ro required 1 isa Path::StepDispatcher /;
+has dispatcher => qw/ is ro required 1 isa Path::TreeDispatcher /;
 has visitor => qw/ is ro required 1 isa CodeRef /; 
 has stack => qw/ is ro required 1 isa ArrayRef /, default => sub { [] };
 has path => qw/ accessor target_path isa Str /;
@@ -113,7 +113,7 @@ sub visit {
 
 sub push {
     my $self = shift;
-    push @{ $self->stack }, $self->dispatcher->build_switch_context( context => $self, @_ );
+    push @{ $self->stack }, $self->dispatcher->build_local_context( context => $self, @_ );
 }
 
 sub pop {
@@ -121,19 +121,19 @@ sub pop {
     pop @{ $self->stack };
 }
 
-package Path::StepDispatcher::SwitchContext;
+package Path::TreeDispatcher::LocalContext;
 
 use Any::Moose;
 
-has context => qw/ is ro required 1 isa Path::StepDispatcher::Context /;
-has match => qw/ is ro required 1 isa Path::StepDispatcher::Match /;
+has context => qw/ is ro required 1 isa Path::TreeDispatcher::Context /;
+has match => qw/ is ro required 1 isa Path::TreeDispatcher::Match /;
 has path => qw/ is rw isa Str lazy_build 1 /;
 sub _build_path {
     my $self = shift;
     return $self->match->leftover_path;
 }
 
-package Path::StepDispatcher::Match;
+package Path::TreeDispatcher::Match;
 
 use Any::Moose;
 
@@ -146,7 +146,7 @@ sub _build_match_path {
 }
 has match_arguments => qw/ is ro required 1 isa ArrayRef /, default => sub { [] };
 
-package Path::StepDispatcher::Rule::Regexp;
+package Path::TreeDispatcher::Rule::Regexp;
 
 use Any::Moose;
 
@@ -158,7 +158,7 @@ sub match {
 
     # TODO This is done because of issues with $'
     # Also because it seems to be the sane thing you would want to do
-    # (Not match a switching action in the middle)
+    # (Not match a branching action in the middle)
     # What about leading space, delimiter garbage, etc.?
     my $regexp = $self->regexp;
     $regexp = qr/^$regexp/;
@@ -174,7 +174,7 @@ sub match {
     };
 }
 
-package Path::StepDispatcher::Switch;
+package Path::TreeDispatcher::Branch;
 
 use Any::Moose;
 
@@ -218,16 +218,16 @@ sub dispatch {
     $ctx->pop();
 }
 
-package Path::StepDispatcher::Builder;
+package Path::TreeDispatcher::Builder;
 
 use Any::Moose;
-use Path::StepDispatcher::Carp;
+use Path::TreeDispatcher::Carp;
 
 has $_ => ( accessor => "_$_" )
-    for qw/ parse_rule parse_switch /;
+    for qw/ parse_rule parse_branch /;
 
-has build_switch =>
-    qw/ accessor _build_switch default Path::StepDispatcher::Switch /;
+has build_branch =>
+    qw/ accessor _build_branch default Path::TreeDispatcher::Branch /;
 
 # $builder->parse_rule( ... )
 # $parse->( $builder, ... )
@@ -250,47 +250,47 @@ sub builtin_parse_rule {
     my $builder = shift;
     my $input = shift;
 
-    if ( ! defined $input ) {
+    if ( ! defined $input ) { # undefined is an "Always match" rule
         return undef;
     }
     elsif ( ref $input eq 'Regexp' ) {
-        return Path::StepDispatcher::Rule::Regexp->new( regexp => $input );
+        return Path::TreeDispatcher::Rule::Regexp->new( regexp => $input );
     }
 
     croak "Do not know how to parse rule input ($input)";
 }
 
-# $builder->parse_switch( ... )
+# $builder->parse_branch( ... )
 # $parse->( $builder, ... )
-sub parse_switch {
+sub parse_branch {
     my $builder = shift;
     my @input = @_;
 
-    my $switch;
+    my $branch;
 
-    $switch = $builder->_parse( $builder->_parse_switch, @input );
-    return $switch if defined $switch; # TODO Check if $switch does Rule
+    $branch = $builder->_parse( $builder->_parse_branch, @input );
+    return $branch if defined $branch; # TODO? Check if $branch does branching role
 
-    $switch = $builder->builtin_parse_switch( @input );
-    return $switch if defined $switch;
+    $branch = $builder->builtin_parse_branch( @input );
+    return $branch if defined $branch;
 
-    croak "Unable to parse switch from input";
+    croak "Unable to parse branch from input";
 }
 
-sub builtin_parse_switch {
+sub builtin_parse_branch {
     my $builder = shift;
     my $rule = shift;
     my @add = @_;
 
-    my $switch = $builder->build_switch( rule => $builder->parse_rule( $rule ) );
-    $switch->add( @add ) if @add;
-    return $switch;
+    my $branch = $builder->build_branch( rule => $builder->parse_rule( $rule ) );
+    $branch->add( @add ) if @add;
+    return $branch;
 }
 
-# TODO Die if unable to build
-sub build_switch {
+# TODO? Die if unable to build
+sub build_branch {
     my $self = shift;
-    return $self->_build( $self->_build_switch, @_ );
+    return $self->_build( $self->_build_branch, @_ );
 }
 
 sub _parse {
@@ -315,7 +315,7 @@ sub _build {
         return $build->( @_ );
     }
     elsif ( $build && ref $build eq '' ) {
-        $build->new( @_ ); # TODO Wrap this?
+        $build->new( @_ );
     }
     else {
         croak "Do not know how to build with ($build)";

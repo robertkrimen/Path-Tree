@@ -7,22 +7,22 @@ use Test::Most;
 
 plan qw/no_plan/;
 
-use Path::StepDispatcher;
+use Path::TreeDispatcher;
 
-my $builder = Path::StepDispatcher::Builder->new;
+my $builder = Path::TreeDispatcher::Builder->new;
 
 {
-    is( Path::StepDispatcher::Rule::Regexp->new( regexp => qr/apple\/?/ )->match( 'apple/banana' )->{leftover_path}, 'banana' );
+    is( Path::TreeDispatcher::Rule::Regexp->new( regexp => qr/apple\/?/ )->match( 'apple/banana' )->{leftover_path}, 'banana' );
 }
 
 sub path (@) {
-    return $builder->parse_switch( @_ );
+    return $builder->parse_branch( @_ );
 }
 
 {
     my @sequence;
 
-    my $dispatcher = Path::StepDispatcher->new( root => path, visitor => sub {
+    my $dispatcher = Path::TreeDispatcher->new( root => path, visitor => sub {
         my $ctx = shift; 
         push @sequence, shift;
     } );
@@ -57,7 +57,7 @@ sub path (@) {
     );
 
     my @sequence;
-    my $dispatcher = Path::StepDispatcher->new( root => $root, visitor => sub {
+    my $dispatcher = Path::TreeDispatcher->new( root => $root, visitor => sub {
         my $ctx = shift; 
         my $data = shift;
         if ( ref $data eq 'CODE' ) {
@@ -74,7 +74,7 @@ sub path (@) {
 
     undef @sequence;
     $dispatcher->dispatch( "apple/banana" );
-    cmp_deeply( \@sequence, [qw/ Apple Apple+Banana /] );
+    cmp_deeply( \@sequence, [qw/ Apple Apple+Banana Apple+Grape /] );
 
     undef @sequence;
     $dispatcher->dispatch( "cherry" );

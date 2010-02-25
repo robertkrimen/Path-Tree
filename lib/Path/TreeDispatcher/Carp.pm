@@ -1,4 +1,4 @@
-package Path::StepDispatcher::Carp;
+package Path::TreeDispatcher::Carp;
 
 use strict;
 use warnings;
