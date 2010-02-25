@@ -214,6 +214,8 @@ sub dispatch {
             $ctx->visit( $node );
         }
     }
+
+    $ctx->pop();
 }
 
 package Path::StepDispatcher::Builder;
