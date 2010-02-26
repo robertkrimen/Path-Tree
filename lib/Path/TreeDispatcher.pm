@@ -210,7 +210,7 @@ sub match {
     my $self = shift;
     my $path = shift;
 
-    return Path::TreeDispatcher::Rule::TokenRegexp->regexp_match( $path, $self->regexp );
+    return Path::TreeDispatcher::Rule::Regexp->regexp_match( $path, $self->regexp );
 }
 
 package Path::TreeDispatcher::Branch;
@@ -275,6 +275,8 @@ has $_ => ( accessor => "_$_" )
 has build_branch =>
     qw/ accessor _build_branch default Path::TreeDispatcher::Branch /;
 
+has delimeter => qw/ is ro required 1 isa Str /, default => ' ';
+
 # $builder->parse_rule( ... )
 # $parse->( $builder, ... )
 sub parse_rule {
@@ -298,6 +300,11 @@ sub builtin_parse_rule {
 
     if ( ! defined $input ) { # undefined is an "Always match" rule
         return undef;
+    }
+    elsif ( ref $input eq '' || ref $input eq 'ARRAY' ) {
+        my @input = ref $input ? @$input : $input;
+        return Path::TreeDispatcher::Rule::TokenRegexp->new(
+            tokens => \@input, delimeter => $builder->delimeter );
     }
     elsif ( ref $input eq 'Regexp' ) {
         return Path::TreeDispatcher::Rule::Regexp->new( regexp => $input );
