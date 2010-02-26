@@ -31,8 +31,11 @@ sub dispatch {
     }
 
     my $path = $given{path};
-    my $ctx = $self->build_context( dispatcher => $self, path => $path, visitor => $self->visitor );
+    my @ctx = ref $given{ctx} eq 'ARRAY' ? @{ $given{ctx} } : ();
+    my $ctx = $self->build_context( dispatcher => $self,
+        path => $path, visitor => $self->visitor, @ctx );
     $self->root->dispatch( $ctx );
+    return $ctx;
 }
 
 sub builtin_visit {
@@ -206,13 +209,20 @@ sub dispatch {
 
     $ctx->push( match => $match );
 
-    for my $node (@{ $self->sequence }) {
-        if ( blessed $node && $node->can( 'dispatch' ) ) {
-            $node->dispatch( $ctx );
+    eval {
+        for my $node (@{ $self->sequence }) {
+            
+            if ( blessed $node && $node->can( 'dispatch' ) ) {
+                $node->dispatch( $ctx );
+            }
+            else {
+                $ctx->visit( $node );
+            }
         }
-        else {
-            $ctx->visit( $node );
-        }
+    };
+    if ($@) {
+        # TODO Check for ->next or ->last (or ->return ?) here
+        die $@;
     }
 
     $ctx->pop();
