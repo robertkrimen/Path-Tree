@@ -109,6 +109,10 @@ sub local {
     return shift->stack->[-1];
 }
 
+sub match {
+    return shift->local->match;
+}
+
 sub visit {
     my ( $self, $data ) = @_;
     $self->visitor->( $self, $data );
@@ -147,7 +151,9 @@ sub _build_match_path {
     my $self = shift;
     return substr $self->target_path, 0, length $self->leftover_path;
 }
+# TODO Alias or change the name to just 'arguments'
 has match_arguments => qw/ is ro required 1 isa ArrayRef /, default => sub { [] };
+
 
 package Path::TreeDispatcher::Rule::Regexp;
 
@@ -155,15 +161,15 @@ use Any::Moose;
 
 has regexp => qw/ is ro required 1 isa Regexp /;
 
-sub match {
-    my $self = shift;
+sub regexp_match {
+    my $self = shift;;
     my $path = shift;
+    my $regexp = shift;
 
     # TODO This is done because of issues with $'
     # Also because it seems to be the sane thing you would want to do
     # (Not match a branching action in the middle)
     # What about leading space, delimiter garbage, etc.?
-    my $regexp = $self->regexp;
     $regexp = qr/^$regexp/;
 
     return unless my @arguments = $path =~ $regexp;
@@ -175,6 +181,36 @@ sub match {
         leftover_path => $leftover_path,
         match_arguments => \@arguments,
     };
+}
+
+sub match {
+    my $self = shift;
+    my $path = shift;
+
+    return $self->regexp_match( $path, $self->regexp );
+}
+
+package Path::TreeDispatcher::Rule::TokenRegexp;
+
+use Any::Moose;
+
+has tokens => qw/ is ro required 1 isa ArrayRef /;
+has delimeter => qw/ is ro required 1 isa Str /, default => ' ';
+has regexp => qw/ is ro lazy_build 1 /;
+sub _build_regexp {
+    my $self = shift;
+    my $tokens = $self->tokens;
+    my $delimeter = $self->delimeter;
+    my @tokens = grep { length } map { split $delimeter } @$tokens;
+    my $regexp = join "(?:$delimeter)*", '', @tokens, '';
+    return qr/$regexp/;
+}
+
+sub match {
+    my $self = shift;
+    my $path = shift;
+
+    return Path::TreeDispatcher::Rule::TokenRegexp->regexp_match( $path, $self->regexp );
 }
 
 package Path::TreeDispatcher::Branch;
