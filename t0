@@ -1,0 +1,14 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+my @matched;
+
+@matched = 'apple' =~ qr/a(pp)le/;
+warn "@matched";
+warn defined $1;
+
+@matched = 'apple' =~ qr/apple/;
+warn "@matched";
+warn defined $1;

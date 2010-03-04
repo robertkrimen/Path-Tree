@@ -1,0 +1,1080 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+package Path::URIWalker;
+
+use Any::Moose;
+
+has path => qw/ is rw required 1 isa Str /;
+has sequence => qw/ is ro isa ArrayRef /, default => sub { [] };
+
+has step_class => qw/ is ro isa Str lazy_build 1 /;
+sub _build_step_class {
+    return shift->BUILD_STEP_CLASS;
+}
+sub BUILD_STEP_CLASS { 'Path::URIWalker::Step' }
+
+sub leftover {
+    return shift->step( -1 )->leftover;
+}
+
+sub BUILD {
+    my $self = shift;
+    $self->path( $self->normalize_path( $self->path ) );
+    $self->push( leftover => $self->path, segment => '', prefix => '', captured => [] );
+}
+
+sub normalize_path {
+    my $self = shift;
+    local $_ = shift;
+
+    s#/+#/#g;
+
+    return $_;
+}
+
+sub parse_rule {
+    my $self = shift;
+    my $input = shift;
+
+    # Adapted from Dancer::Route::make_regexp_from_route
+
+    my $pattern = $input;
+
+    if ( $pattern =~ m/^\d+$/ ) {
+        $pattern = "/([^/]+)" x $pattern;
+    }
+    else {
+
+        $pattern =~ s#/+#/#g;
+
+        # Parse .../*/...
+        $pattern =~ s#\*#([^/]+)#g;
+
+        # Escape '.'
+        $pattern =~ s#\.#\\.#g;
+    }
+
+    $pattern = "^$pattern";
+
+    return qr/$pattern/;
+}
+
+sub consume {
+    my $self = shift;
+    my $rule = shift;
+
+    $rule = $self->parse_rule( $rule );
+
+    my $last_step = $self->step;
+    my $path = $last_step->leftover;
+
+    my @captured;
+    my @match = $path =~ $rule;
+
+    if ( defined $1 ) {
+        @captured = @match;
+    }
+    elsif ( $match[0] ) {
+    }
+    else {
+        return;
+    }
+
+    my $leftover = eval q{$'};
+    my $segment = substr $path, 0, -1 * length $leftover;
+    my $prefix = $last_step->prefix . $last_step->segment;
+
+    $self->push(
+        captured => \@captured,
+        leftover => $leftover,
+        segment => $segment,
+        prefix => $prefix,
+    );
+
+    return \@captured;
+}
+
+sub push {
+    my $self = shift;
+
+    my $step = $self->step_class->new( @_ );
+    push @{ $self->sequence }, $step;
+    return $step;
+}
+
+sub step {
+    my $self = shift;
+    my $at = shift;
+    $at = -1 unless defined $at;
+    return $self->sequence->[ $at ];
+}
+
+package Path::URIWalker::Step;
+
+use Any::Moose;
+
+has [qw/ prefix leftover segment /] => qw/ is ro isa Str /;
+has captured => qw/ is ro isa ArrayRef required 1 /;
+
+package main;
+
+use Test::Most;
+
+plan qw/ no_plan /;
+
+ok( 1 );
+
+my ( $wlk );
+
+$wlk = Path::URIWalker->new( path => '/apple/0/1/banana' );
+ok( $wlk->consume( '/apple' ) );
+is( $wlk->leftover, '/0/1/banana' );
+is( $wlk->step->segment, '/apple' );
+
+cmp_deeply( $wlk->consume( '/*/*' ), [qw/ 0 1 /] );
+is( $wlk->leftover, '/banana' );
+is( $wlk->step->prefix, '/apple' );
+is( $wlk->step->segment, '/0/1' );
+
+cmp_deeply( $wlk->consume( '/*' ), [qw/ banana /] );
+is( $wlk->leftover, '' );
+
+$wlk = Path::URIWalker->new( path => '/apple/0/1/banana' );
+ok( $wlk->consume( 1 ) );
+is( $wlk->leftover, '/0/1/banana' );
+
+cmp_deeply( $wlk->consume( 2 ), [qw/ 0 1 /] );
+is( $wlk->leftover, '/banana' );
+
+cmp_deeply( $wlk->consume( 1 ), [qw{ banana }] );
+is( $wlk->leftover, '' );
+
+__END__
+
+use Carp;
+
+sub parse_rule {
+    my $self = shift;
+    my $input = shift;
+
+    if ( ref $input eq '' || ref $input eq 'ARRAY' ) {
+        my @input = ref $input ? @$input : $input;
+        return P8D::Rule::TokenRegexp->new(
+            tokens => \@input );
+    }
+    elsif ( ref $input eq 'Regexp' ) {
+        return P8D::Rule::Regexp->new(
+            regexp => $input );
+    }
+
+    croak "Do not know how to parse rule input ($input)";
+}
+
+package P8D::Context;
+
+use Any::Moose;
+use Carp;
+
+sub trail {
+
+    my $self = shift;
+    my $route = shift;
+    my $path = shift;
+
+    my ( @trail );
+
+    for my $child (@{ $route->children }) {
+        
+        if ( blessed $child ) {
+
+            my $match;
+            if ( my $rule = $child->rule ) {
+                $match = $rule->match( $path );
+            }
+            else {
+                $match = { leftover_path => $path };
+            }
+
+            if ( my $subtrail = $self->trail( $child, $match->{leftover_path} ) ) {
+            }
+        }
+        else {
+            push @trail, $child;
+        }
+    }
+}
+
+sub match {
+    my $self = shift;
+    my $route = shift;
+    my $path = shift;
+
+    my $match;
+    if ( my $rule = $route->rule ) {
+        return unless $match = $rule->match( $path );
+    }
+    else {
+        $match = { leftover_path => $path };
+    }
+#    $match = $ctx->dispatcher->build_match( %$match, target_path => $path );
+
+#    $ctx->push( match => $match );
+
+    eval {
+        for my $subroute (@{ $route->children }) {
+            
+            if ( blessed $subroute ) {
+                $self->_dispatch( $subroute => $match->{leftover_path} );
+            }
+
+        }
+    };
+    if ($@) {
+        # TODO Check for ->next or ->last (or ->return ?) here
+        die $@;
+    }
+
+#    $ctx->pop();
+}
+
+sub _visit {
+    my $self = shift;
+}
+
+package Path::TreeDispatcher::LocalContext;
+
+use Any::Moose;
+
+has context => qw/ is ro required 1 isa Path::TreeDispatcher::Context /;
+has match => qw/ is ro required 1 isa Path::TreeDispatcher::Match /;
+has path => qw/ is rw isa Str lazy_build 1 /;
+sub _build_path {
+    my $self = shift;
+    return $self->match->leftover_path;
+}
+
+package Path::TreeDispatcher::Match;
+
+use Any::Moose;
+
+has target_path => qw/ is ro required 1 isa Str /;
+has leftover_path => qw/ is ro required 1 isa Str /;
+has match_path => qw/ is ro isa Str lazy_build 1 /;
+sub _build_match_path {
+    my $self = shift;
+    return substr $self->target_path, 0, length $self->leftover_path;
+}
+# TODO Alias or change the name to just 'arguments'
+has match_arguments => qw/ is ro required 1 isa ArrayRef /, default => sub { [] };
+
+package P8D::Rule::Regexp;
+
+use Any::Moose;
+
+has regexp => qw/ is ro required 1 isa Regexp /;
+
+sub regexp_match {
+    my $self = shift;;
+    my $path = shift;
+    my $regexp = shift;
+
+    # TODO This is done because of issues with $'
+    # Also because it seems to be the sane thing you would want to do
+    # (Not match a branching action in the middle)
+    # What about leading space, delimiter garbage, etc.?
+    $regexp = qr/^$regexp/;
+
+    return unless my @arguments = $path =~ $regexp;
+    my $leftover_path = eval q{$'};
+
+    undef @arguments unless defined $1; # Just got the success indicator
+
+    return {
+        leftover_path => $leftover_path,
+        match_arguments => \@arguments,
+    };
+}
+
+sub match {
+    my $self = shift;
+    my $path = shift;
+
+    return $self->regexp_match( $path, $self->regexp );
+}
+
+package P8D::Rule::TokenRegexp;
+
+use Any::Moose;
+
+has tokens => qw/ is ro required 1 isa ArrayRef /;
+has delimeter => qw/ is ro required 1 isa Str /, default => '/';
+has regexp => qw/ is ro lazy_build 1 /;
+sub _build_regexp {
+    my $self = shift;
+    my $tokens = $self->tokens;
+    my $delimeter = $self->delimeter;
+    my @tokens = grep { length } map { split $delimeter } @$tokens;
+    my $regexp = join "(?:$delimeter)*", '', @tokens, '';
+    return qr/$regexp/;
+}
+
+sub match {
+    my $self = shift;
+    my $path = shift;
+
+    return P8D::Rule::Regexp->regexp_match( $path, $self->regexp );
+}
+
+package P8D::RouteMeta;
+
+use Any::Moose;
+
+has $_ => accessor => "_$_" for (qw/ name path at chain /);
+has rule => qw/ is rw /;
+has children => qw/ is ro isa ArrayRef /, default => sub { [] };
+
+sub name {
+    my $self = shift;
+    my $name = shift;
+
+    $self->_name( $name );
+    $self->_path( $name ) unless defined $self->_path;
+
+    return $self;
+}
+
+sub at {
+    my $self = shift;
+    my $rule = shift;
+
+    if ( defined $rule && ref $rule eq '' ) {
+        $self->name( $rule ) unless defined $self->_name;
+    }
+
+    $self->rule( P8D->parse_rule( $rule ) );
+
+    return $self;
+}
+
+sub chain {
+    my $self = shift;
+    
+    $self->_chain( 1 );
+
+    push @{ $self->children }, @_;
+
+    return $self;
+}
+
+sub is_chain {
+    my $self = shift;
+    return $self->_chain;
+}
+
+sub setup {
+    my $self = shift;
+
+    for my $child ( @{ $self->children } ) {
+
+        if ( ref $child eq 'CODE' ) {
+        }
+        else {
+
+            my $name = $child->_name;
+            if( $name =~ s/^@// ) {
+                # TODO Setup route alias
+            }
+            my $path = join '/', $self->_path, $name;
+            $path =~ s!/+!/!g;
+            $child->_path( $path );
+
+            $child->setup;
+        }
+    }
+}
+
+sub describe {
+    my $self = shift;
+
+    my $rule = $self->rule;
+    $rule &&= $rule->regexp;
+    $rule ||= '';
+    $rule &&= " [$rule]";
+
+    warn $self->_path, $rule, "\n";
+
+    for my $child ( @{ $self->children } ) {
+        $child->describe if ref $child ne 'CODE';
+    }
+}
+
+package main;
+
+use Test::Most;
+
+plan qw/ no_plan /;
+
+ok( 1 );
+
+my @branch;
+
+sub route {
+    my $meta = P8D::RouteMeta->new;
+    $meta->name( $_[0] ) if @_;
+    return $meta;
+}
+
+my $head =
+route( '' )->chain( 
+
+    route( 'post' )->at( 'journal' )->chain(
+
+        route( 'year-month' )->at( qr#(\d{4})/(\d{2})# )->chain(
+
+            sub {
+            },
+
+            route->at( '/' => sub {
+            } ),
+
+            route( '@post' )->at( qr#(.+)# => sub {
+            } ),
+
+        ),
+
+        route->at( '/' => sub {
+        } ),
+
+    ),
+);
+
+ok( $head );
+
+$head->setup;
+
+warn "\n";
+$head->describe;
+
+exit;
+
+route( '' )->chain( 
+
+    route( 'post' )->at( 'post/' )->chain(
+
+        route( 'date' )->at( qr#(\d{2,4})# => sub {
+        } )
+
+            sub {
+            },
+
+            route( sub {
+            } ),
+
+            route( '@post' )->at( qr#(.+)# => sub {
+            } ),
+
+        ),
+
+        route( sub {
+        } ),
+
+    ),
+);
+
+on( 'post/' =>
+    'OPTIONS' => sub { },
+    'GET POST' => sub { },
+)->before( sub {
+} );
+
+on( 'post/' => sub {
+    my $ctx = shift;
+
+    my $query = $ctx->leftover;
+    my ( $username, $password ) = $ctx->get(qw/ username password /);
+
+} );
+
+on( 'api/*' =>
+
+    before {
+
+        my $ctx = shift;
+
+        my $icon_query = $ctx->capture( 0 );
+        my $icon = $ctx->look_up_icon( $icon_query );
+
+        $ctx->end( "Icon ($icon_query) does not exist" ) unless $icon;
+
+    },
+
+    on( 'does-icon-exist' => sub {
+        my $ctx = shift;
+    } ),
+
+    on( 'fetch-icon-uri :a-tag :another-tag' => sub {
+    } ),
+    
+    sub {
+        my $ctx = shift;
+    },
+
+    after {
+        my $ctx = shift;
+    },
+
+    end {
+        my $ctx = shift;
+    },
+);
+
+dispatch(
+
+    'post' => sub {
+        my $ctx = shift;
+
+        my $query = $ctx->leftover;
+        my ( $username, $password ) = $ctx->get(qw/ username password /);
+
+    },
+
+    'api/*' => sub {
+
+        -before => sub {
+
+            my $ctx = shift;
+
+            my $icon_query = $ctx->capture( 0 );
+            my $icon = $ctx->look_up_icon( $icon_query );
+
+            $ctx->end( "Icon ($icon_query) does not exist" ) unless $icon;
+
+        },
+
+        'does-icon-exist' => sub {
+            my $ctx = shift;
+        },
+
+        'fetch-icon-uri :a-tag :another-tag' => sub {
+        },
+        
+        sub {
+            my $ctx = shift;
+        },
+
+        -after => sub {
+            my $ctx = shift;
+        },
+
+        -end => sub {
+            my $ctx = shift;
+        },
+    },
+);
+
+route( '/' )->chain( 
+
+    route( 'post # /journal' )->chain(
+
+        route( 'date # /:year/:month' )->chain(
+
+            sub {
+            },
+
+            route( '/' => sub {
+            } ),
+
+            route( '@post # /:title' => sub {
+            } ),
+
+        ),
+
+        route( '/' => sub {
+        } ),
+
+    ),
+);
+
+route( '' )->chain( 
+
+    route( 'post' => 'journal' )->chain(
+
+        route( 'year-month' => qr#(\d{4})/(\d{2})# )->chain(
+
+            sub {
+            },
+
+            route( '/' => sub {
+            } ),
+
+            route( '@post' => qr#(.+)# => sub {
+            } ),
+
+        ),
+
+        route( '/' => sub {
+        } ),
+
+    ),
+);
+
+if ( $rq->path( '/post' ) ) {
+    
+}
+
+my ( $route, $at, $under, $lnk, $bld );
+
+route( '' )->chain( 
+
+    route( 'post' )->at( 'journal' )->chain(
+
+        route->at( '/' => sub {
+        } ),
+
+        route( 'year-month' )->at( qr#(\d{4})/(\d{2})# )->chain(
+
+            sub {
+            },
+
+            route->at( '/' => sub {
+            } ),
+
+            route( '@post' )->at( qr#(.+)# => sub {
+            } ),
+
+        ),
+    ),
+);
+
+__END__
+
+# /journal
+# /journal/
+# /journal/year-month
+# /journal/year-month/
+# /post
+
+$at->( 'journal' )->chain( 'post/' );
+
+
+    $under->( 'post/' )->on( '/' => sub {} );
+
+    $under->( 'post/' )->at( qr#(\d{4})/(\d{2})# )->chain( 'year-month' );
+
+    {
+
+        $under->( 'post/year-month' )->on( '/' => sub {} );
+
+        $under->( 'post/year-month' )->on( qr#(.+)# => sub {} )->name( 'post';
+
+    }
+
+}
+
+
+$lnk->
+    chain( 'journal/' )->
+    at( 'journal' )->
+    on( '/' => sub {
+    } )->under(
+
+    $lnk->
+    chain( 'year-month/' )->
+    at( qr#(\d{4}/\d{2})#  )->
+    on( '/' => sub {
+    } )->under( 
+
+        $lnk->
+        name( 'post' )->
+        on( qr#(.+)# => sub {
+        } )
+
+    ),
+);
+
+# post/
+# post/year-month/
+# post
+
+$lnk->route( 'post/year-month/post' )->unchain;
+
+
+
+__END__
+
+use Any::Moose;
+use Path::TreeDispatcher::Carp;
+
+has build_context =>
+    qw/ accessor _build_context default Path::TreeDispatcher::Context /;
+
+has build_local_context =>
+    qw/ accessor _build_local_context default Path::TreeDispatcher::LocalContext /;
+
+has build_match =>
+    qw/ accessor _build_match default Path::TreeDispatcher::Match /;
+
+has root => qw/ is rw required 1/;
+
+has visitor => qw/ is ro required 1 isa CodeRef /,
+    default => sub { my $self = shift; sub { $self->builtin_visit( @_ ) } };
+
+sub dispatch {
+    my $self = shift;
+    my %given;
+    if ( @_ == 1 ) {
+        %given = ( path => shift );
+    }
+    else {
+        %given = @_;
+    }
+
+    my $path = $given{path};
+    my @ctx = ref $given{ctx} eq 'ARRAY' ? @{ $given{ctx} } : ();
+    my $ctx = $self->build_context( dispatcher => $self,
+        path => $path, visitor => $self->visitor, @ctx );
+    $self->root->dispatch( $ctx );
+    return $ctx;
+}
+
+sub builtin_visit {
+    my $self = shift;
+    my $ctx = shift;
+    my $data = shift;
+
+    if ( ref $data eq 'CODE' ) {
+        $data->( $ctx );
+    }
+    else {
+        $data = "undef" unless defined $data;
+        croak "Do not know how to visit data ($data)";
+    }
+}
+
+# $dispatcher->build_context( ... )
+# $build->( $dispatcher, ... )
+sub build_context {
+    my $self = shift;
+    return $self->_build( $self->_build_context, @_ );
+}
+
+# $dispatcher->build_local_context( ... )
+# $build->( $dispatcher, ... )
+sub build_local_context {
+    my $self = shift;
+    return $self->_build( $self->_build_local_context, @_ );
+}
+
+# $dispatcher->build_match( ... )
+# $build->( $dispatcher, ... )
+sub build_match {
+    my $self = shift;
+    return $self->_build( $self->_build_match, @_ );
+}
+
+sub _build {
+    my $self = shift;
+    my $build = shift;
+
+    if ( ref $build eq 'CODE' ) {
+        return $build->( $self, @_ );
+    }
+    elsif ( $build && ref $build eq '' ) {
+        $build->new( @_ );
+    }
+    else {
+        croak "Do not know how to build with $build";
+    }
+}
+
+package Path::TreeDispatcher::Context;
+
+use Any::Moose;
+
+has dispatcher => qw/ is ro required 1 isa Path::TreeDispatcher /;
+has visitor => qw/ is ro required 1 isa CodeRef /; 
+has stack => qw/ is ro required 1 isa ArrayRef /, default => sub { [] };
+has path => qw/ accessor target_path isa Str /;
+
+sub path {
+    my $self = shift;
+    if ( my $local = $self->local ) {
+        return $local->path( @_ );
+    }
+    return $self->target_path( @_ );
+}
+
+sub local {
+    return shift->stack->[-1];
+}
+
+sub match {
+    return shift->local->match;
+}
+
+sub visit {
+    my ( $self, $data ) = @_;
+    $self->visitor->( $self, $data );
+}
+
+sub push {
+    my $self = shift;
+    push @{ $self->stack }, $self->dispatcher->build_local_context( context => $self, @_ );
+}
+
+sub pop {
+    my $self = shift;
+    pop @{ $self->stack };
+}
+
+package Path::TreeDispatcher::LocalContext;
+
+use Any::Moose;
+
+has context => qw/ is ro required 1 isa Path::TreeDispatcher::Context /;
+has match => qw/ is ro required 1 isa Path::TreeDispatcher::Match /;
+has path => qw/ is rw isa Str lazy_build 1 /;
+sub _build_path {
+    my $self = shift;
+    return $self->match->leftover_path;
+}
+
+package Path::TreeDispatcher::Match;
+
+use Any::Moose;
+
+has target_path => qw/ is ro required 1 isa Str /;
+has leftover_path => qw/ is ro required 1 isa Str /;
+has match_path => qw/ is ro isa Str lazy_build 1 /;
+sub _build_match_path {
+    my $self = shift;
+    return substr $self->target_path, 0, length $self->leftover_path;
+}
+# TODO Alias or change the name to just 'arguments'
+has match_arguments => qw/ is ro required 1 isa ArrayRef /, default => sub { [] };
+
+
+package Path::TreeDispatcher::Rule::Regexp;
+
+use Any::Moose;
+
+has regexp => qw/ is ro required 1 isa Regexp /;
+
+sub regexp_match {
+    my $self = shift;;
+    my $path = shift;
+    my $regexp = shift;
+
+    # TODO This is done because of issues with $'
+    # Also because it seems to be the sane thing you would want to do
+    # (Not match a branching action in the middle)
+    # What about leading space, delimiter garbage, etc.?
+    $regexp = qr/^$regexp/;
+
+    return unless my @arguments = $path =~ $regexp;
+    my $leftover_path = eval q{$'};
+
+    undef @arguments unless defined $1; # Just got the success indicator
+
+    return {
+        leftover_path => $leftover_path,
+        match_arguments => \@arguments,
+    };
+}
+
+sub match {
+    my $self = shift;
+    my $path = shift;
+
+    return $self->regexp_match( $path, $self->regexp );
+}
+
+package Path::TreeDispatcher::Rule::TokenRegexp;
+
+use Any::Moose;
+
+has tokens => qw/ is ro required 1 isa ArrayRef /;
+has delimeter => qw/ is ro required 1 isa Str /, default => ' ';
+has regexp => qw/ is ro lazy_build 1 /;
+sub _build_regexp {
+    my $self = shift;
+    my $tokens = $self->tokens;
+    my $delimeter = $self->delimeter;
+    my @tokens = grep { length } map { split $delimeter } @$tokens;
+    my $regexp = join "(?:$delimeter)*", '', @tokens, '';
+    return qr/$regexp/;
+}
+
+sub match {
+    my $self = shift;
+    my $path = shift;
+
+    return Path::TreeDispatcher::Rule::Regexp->regexp_match( $path, $self->regexp );
+}
+
+package Path::TreeDispatcher::Branch;
+
+use Any::Moose;
+
+has rule => qw/ is ro /;
+has sequence => qw/ is ro required 1 isa ArrayRef /, default => sub { [] };
+
+sub add {
+    my $self = shift;
+
+    push @{ $self->sequence }, @_;
+
+    return $self;
+}
+
+sub dispatch {
+    my $self = shift;
+    my $ctx = shift;
+
+    my $path = $ctx->path;
+
+    my $match;
+    if ( my $rule = $self->rule ) {
+        return unless $match = $rule->match( $path );
+    }
+    else {
+        $match = { leftover_path => $path };
+    }
+    $match = $ctx->dispatcher->build_match( %$match, target_path => $path );
+
+    $ctx->push( match => $match );
+
+    eval {
+        for my $node (@{ $self->sequence }) {
+            
+            if ( blessed $node && $node->can( 'dispatch' ) ) {
+                $node->dispatch( $ctx );
+            }
+            else {
+                $ctx->visit( $node );
+            }
+        }
+    };
+    if ($@) {
+        # TODO Check for ->next or ->last (or ->return ?) here
+        die $@;
+    }
+
+    $ctx->pop();
+}
+
+package Path::TreeDispatcher::Builder;
+
+use Any::Moose;
+use Path::TreeDispatcher::Carp;
+
+has $_ => ( accessor => "_$_" )
+    for qw/ parse_rule parse_branch /;
+
+has build_branch =>
+    qw/ accessor _build_branch default Path::TreeDispatcher::Branch /;
+
+has delimeter => qw/ is ro required 1 isa Str /, default => ' ';
+
+# $builder->parse_rule( ... )
+# $parse->( $builder, ... )
+sub parse_rule {
+    my $builder = shift;
+    my $input = shift;
+
+    my $rule;
+
+    $rule = $builder->_parse( $builder->_parse_rule, $input );
+    return $rule if defined $rule; # TODO Check if $rule does Rule
+
+    $rule = $builder->builtin_parse_rule( $input );
+    return $rule if defined $rule;
+
+    return undef;
+}
+
+sub builtin_parse_rule {
+    my $builder = shift;
+    my $input = shift;
+
+    if ( ! defined $input ) { # undefined is an "Always match" rule
+        return undef;
+    }
+    elsif ( ref $input eq '' || ref $input eq 'ARRAY' ) {
+        my @input = ref $input ? @$input : $input;
+        return Path::TreeDispatcher::Rule::TokenRegexp->new(
+            tokens => \@input, delimeter => $builder->delimeter );
+    }
+    elsif ( ref $input eq 'Regexp' ) {
+        return Path::TreeDispatcher::Rule::Regexp->new( regexp => $input );
+    }
+
+    croak "Do not know how to parse rule input ($input)";
+}
+
+# $builder->parse_branch( ... )
+# $parse->( $builder, ... )
+sub parse_branch {
+    my $builder = shift;
+    my @input = @_;
+
+    my $branch;
+
+    $branch = $builder->_parse( $builder->_parse_branch, @input );
+    return $branch if defined $branch; # TODO? Check if $branch does branching role
+
+    $branch = $builder->builtin_parse_branch( @input );
+    return $branch if defined $branch;
+
+    croak "Unable to parse branch from input";
+}
+
+sub builtin_parse_branch {
+    my $builder = shift;
+    my $rule = shift;
+    my @add = @_;
+
+    my $branch = $builder->build_branch( rule => $builder->parse_rule( $rule ) );
+    $branch->add( @add ) if @add;
+    return $branch;
+}
+
+# TODO? Die if unable to build
+sub build_branch {
+    my $self = shift;
+    return $self->_build( $self->_build_branch, @_ );
+}
+
+sub _parse {
+    my $self = shift;
+    my $parse = shift;
+
+    return unless $parse;
+
+    if ( ref $parse eq 'CODE' ) {
+        return $parse->( $self, @_ );
+    }
+    else {
+        croak "Do not know how to parse with ($parse)";
+    }
+}
+
+sub _build {
+    my $self = shift;
+    my $build = shift;
+
+    if ( ref $build eq 'CODE' ) {
+        return $build->( @_ );
+    }
+    elsif ( $build && ref $build eq '' ) {
+        $build->new( @_ );
+    }
+    else {
+        croak "Do not know how to build with ($build)";
+    }
+}
+
+1;

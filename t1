@@ -1,0 +1,14 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+my @matched;
+
+@matched = 'apple --a1 banana' =~ qr/a(pp)le/;
+warn "@matched";
+warn eval q{$'};
+
+@matched = 'apple --a1 banana' =~ qr/apple/;
+warn "@matched";
+warn eval q{$'};
