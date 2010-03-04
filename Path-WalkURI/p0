@@ -1,0 +1,50 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+exit;
+
+dispatch(
+
+    'post' => sub {
+        my $ctx = shift;
+
+        my $query = $ctx->leftover;
+        my ( $username, $password ) = $ctx->get(qw/ username password /);
+
+    },
+
+    'api/*' => [
+
+        -before => sub {
+
+            my $ctx = shift;
+
+            my $icon_query = $ctx->capture( 0 );
+            my $icon = $ctx->look_up_icon( $icon_query );
+
+            $ctx->end( "Icon ($icon_query) does not exist" ) unless $icon;
+
+        },
+
+        'does-icon-exist' => sub {
+            my $ctx = shift;
+        },
+
+        'fetch-icon-uri :a-tag :another-tag' => sub {
+        },
+        
+        sub {
+            my $ctx = shift;
+        },
+
+        -after => sub {
+            my $ctx = shift;
+        },
+
+        -end => sub {
+            my $ctx = shift;
+        },
+    },
+);
