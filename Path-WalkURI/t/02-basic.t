@@ -29,6 +29,9 @@ $dispatcher->route(
             diag "/*";
         },
 
+        -before => sub {
+            diag "Before /*";
+        },
     ],
 );
 

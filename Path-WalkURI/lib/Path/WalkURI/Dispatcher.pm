@@ -14,15 +14,13 @@ use Any::Moose;
 has root => qw/ is ro lazy_build 1 /;
 sub _build_root {
     my $self = shift;
-    my ( $root ) = $self->parse_route( undef => '' );
-    return $root;
+    return $self->build_route_with_rule( '' );
 }
 
 sub route {
     my $self = shift;
 
-    my @routes = $self->parse_route( $self->root, @_ );
-    push @{ $self->root->_children }, @routes;
+    $self->parse_route( $self->root, @_ );
 }
 
 sub dispatch {
@@ -43,47 +41,59 @@ sub parse_rule {
     return Path::WalkURI::Dispatcher::Rule::Regexp->new( regexp => $regexp );
 }
 
+sub build_route_with_rule {
+    my $self = shift;
+    my $rule = shift;
+
+    $rule = $self->parse_rule( $rule );
+    my $route = $self->build_route( rule => $rule, @_ );
+
+    return $route;
+}
+
 sub parse_route {
     my $self = shift;
     my $parent = shift;
 
-    my @routes;
+    my ( @children, $before, $after );
     while( @_ ) {
+    
+        if ( ref $_[0] eq '' ) { # Rule
+    
+            my $rule = shift;
+            my $argument = shift;
 
-        my ( $rule, $code, $do, $before, $after, $children );
-        $rule = ref $_[0] eq 'CODE' ? '' : shift;
+            if ( $rule eq '-before' ) {
+                $before = $argument;
+                next;
+            }
+            elsif ( $rule eq '-after' ) {
+                $after = $argument;
+                next;
+            }
 
-#warn $rule;
+            my $route = $self->build_route_with_rule( $rule );
 
-        if ( ref $_[0] eq 'CODE' ) {
-            $code = shift;
-        }
-        elsif ( ref $_[0] eq 'ARRAY' ) {
-            $children = shift;
-        }
-        elsif ( ! @_ ) {
+            if ( ref $argument eq 'CODE' ) {
+                $self->parse_route( $route => $argument );
+            }
+            elsif ( ref $argument eq 'ARRAY' ) {
+                $self->parse_route( $route => @$argument );
+            }
+            else {
+                die "Do not know how to parse argument ($argument)";
+            }
+
+            push @children, $route;
         }
         else {
-            die "Do not know how to parse route (@_)";
+            push @children, shift;
         }
-
-        if      ( $rule eq '-before' )  { $parent->before( $before ) }
-        elsif   ( $rule eq '-after' )   { $parent->after( $after ) }
-        else                            { $do = $code }
-
-        $rule = $self->parse_rule( $rule );
-
-        my $route = $self->build_route( rule => $rule );
-        $route->do( $do ) if $do;
-
-        if ( $children ) {
-            $route->_children( [ $self->parse_route( $route, @$children ) ] ); 
-        }
-
-        push @routes, $route;
     }
 
-    return @routes;
+    push @{ $parent->_children }, @children;
+    $parent->before( $before ) if $before;
+    $parent->after( $after ) if $after;
 }
 
 sub build_route {
@@ -119,7 +129,7 @@ has dispatcher => qw/ is ro required 1 /;
 has rule => qw/ is ro required 1 /;
 has children => qw/ accessor _children isa ArrayRef /, default => sub { [] };
 sub children { return @{ shift->_children } }
-has [qw/ do before after /] => qw/ is rw isa Maybe[CodeRef] /;
+has [qw/ before after end /] => qw/ is rw isa Maybe[CodeRef] /;
 
 package Path::WalkURI::Dispatcher::Walker;
 
@@ -141,25 +151,72 @@ sub BUILD {
 sub walk {
     my $self = shift;
 
-    while (1) {
-        last unless $self->consume;
-        my $do = $self->step->route->do;
-        $do->() if $do;
+    $self->_walk( $self->root );
+}
+
+sub _walk {
+    my $self = shift;
+    my $route = shift;
+
+    # Before...
+    $self->visit( $route->before ) if $route->before;
+
+    for my $child ( $route->children ) {
+        if ( blessed $child ) { # && $child->does( 'Route' )
+            last if $self->visit_route( $child );
+        }
+        else {
+            $self->visit( $child );
+        }
+    }
+
+    $self->visit( $route->after ) if $route->after;
+    
+    $self->visit( $route->end ) if $route->end;
+}
+
+sub visit_route {
+    my $self = shift;
+    my $route = shift;
+
+    return 0 unless $self->consume( $route ); # Does a push
+    $self->_walk( $route );
+    $self->pop;
+
+    return 1;
+}
+
+sub visit {
+    my $self = shift;
+    my $data = shift;
+
+    if ( ref $data eq 'CODE' ) {
+        $data->( $self );
+    }
+    else {
+        die "Do not know how to visit data ($data)";
     }
 }
 
 sub consume {
     my $self = shift;
+    my $route = shift;
 
     my $last_step = $self->step;
-    my $step;
-    for my $route ( $last_step->route->children ) {
-        next unless $step = Path::WalkURI->consume( $last_step, $route->rule->regexp );
-        $step = $self->push( %$step, route => $route );
-        last;
-    }
+    
+    return 0 unless my $step = Path::WalkURI->consume( $last_step, $route->rule->regexp );
 
-    return $step ? 1 : 0;
+    $step = $self->push( %$step, route => $route );
+
+    return 1;
+
+#    for my $route ( $last_step->route->children ) {
+#        next unless $step = Path::WalkURI->consume( $last_step, $route->rule->regexp );
+#        $step = $self->push( %$step, route => $route );
+#        last;
+#    }
+
+#    return $step ? 1 : 0;
 }
 
 sub push {
