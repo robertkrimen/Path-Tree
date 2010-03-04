@@ -136,6 +136,7 @@ package Path::WalkURI::Dispatcher::Walker;
 use Any::Moose;
 
 use Path::WalkURI;
+use Try::Tiny;
 
 has dispatcher => qw/ is ro required 1 /;
 has path => qw/ accessor initial_path required 1 isa Str /;
@@ -180,8 +181,11 @@ sub visit_route {
     my $route = shift;
 
     return 0 unless $self->consume( $route ); # Does a push
-    $self->_walk( $route );
+
+    my $error;
+    try { $self->_walk( $route ) } catch { $error = $_ };
     $self->pop;
+    die $error if $error;
 
     return 1;
 }
