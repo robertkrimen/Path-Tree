@@ -24,8 +24,12 @@ $dispatcher->route(
         '/*/*' => sub {
             diag "/*/*";
         },
-        
+
         sub {
+            diag "After /*/*";
+        },
+
+        '' => sub {
             diag "/*";
         },
 
@@ -40,3 +44,4 @@ $dispatcher->dispatch( '/apple/cherry' );
 $dispatcher->dispatch( '/banana' );
 $dispatcher->dispatch( '/banana/cherry' );
 $dispatcher->dispatch( '/banana/0/1/grape' );
+$dispatcher->dispatch( '/banana/grape' );

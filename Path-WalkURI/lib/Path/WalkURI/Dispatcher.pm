@@ -26,19 +26,58 @@ sub route {
 sub dispatch {
     my $self = shift;
     my $path = shift;
+    my %given = @_;
 
-    my $walker = $self->build_walker( path => $path, root => $self->root );
+    my $walker;
+    my @walker_arguments = ( path => $path, root => $self->root );
+    if ( my $build_walker = $given{build_walker} ) {
+        die "Do not know how to build walker with builder ($build_walker)"
+            unless ref $build_walker eq 'CODE';
+        $walker = $build_walker->( dispatcher => $self, @walker_arguments );
+    }
+    else {
+        $walker = $self->build_walker( @walker_arguments );
+    }
+    
+    if ( my $prepare_walker = $given{prepare_walker} ) {
+        die "Do not know how to prepare walker with preparer ($prepare_walker)"
+            unless ref $prepare_walker eq 'CODE';
+        $prepare_walker->( $walker );
+    }
+
     $walker->walk;
+
+#    {
+#        if ( my $build = $given{walker} ) {
+#            $build = [ with_arguments => $build ] if ref $build eq 'CODE';
+#            if ( ref $build eq 'ARRAY' ) {
+#                my ( $by, $builder ) = @$build;
+#                $by ||= '';
+
+#                if ( $by eq 'with_arguments' ) {
+#                    $walker = $builder->( dispatcher => $self, @walker_arguments );
+#                }
+#                elsif ( $by eq 'with_walker' ) {
+#                    $walker = $builder->( dispatcher => $self,
+#                                            walker => $self->build_walker( @walker_arguments ) );
+#                }
+#                else {
+#                    die "Do not know to build walker by ($by)";
+#                }
+#            }
+#            else {
+#                die "Do not know how to build walker with builder ($build)";
+#            }
+#        }
+#        else {
+#            $walker = $self->build_walker( @walker_arguments );
+#        }
+#    }
 }
 
 sub parse_rule {
     my $self = shift;
-    my $input = shift;
-
-    my $regexp = $input;
-    $regexp = Path::WalkURI::RegexpRule->parse( $regexp ) unless ref $regexp eq 'Regexp';
-
-    return Path::WalkURI::Dispatcher::Rule::Regexp->new( regexp => $regexp );
+    return Path::WalkURI->parse_rule( @_ );
 }
 
 sub build_route_with_rule {
@@ -143,6 +182,7 @@ has path => qw/ accessor initial_path required 1 isa Str /;
 has root => qw/ is ro required 1 /;
 has sequence => qw/ is ro isa ArrayRef /, default => sub { [] };
 has _step => qw/ is rw /;
+has visitor => qw/ is rw isa CodeRef /;
 
 sub BUILD {
     my $self = shift;
@@ -194,11 +234,16 @@ sub visit {
     my $self = shift;
     my $data = shift;
 
-    if ( ref $data eq 'CODE' ) {
-        $data->( $self );
+    if ( my $visitor = $self->visitor ) {
+        $visitor->( $self, $data );
     }
     else {
-        die "Do not know how to visit data ($data)";
+        if ( ref $data eq 'CODE' ) {
+            $data->( $self );
+        }
+        else {
+            die "Do not know how to visit data ($data)";
+        }
     }
 }
 
@@ -213,14 +258,6 @@ sub consume {
     $step = $self->push( %$step, route => $route );
 
     return 1;
-
-#    for my $route ( $last_step->route->children ) {
-#        next unless $step = Path::WalkURI->consume( $last_step, $route->rule->regexp );
-#        $step = $self->push( %$step, route => $route );
-#        last;
-#    }
-
-#    return $step ? 1 : 0;
 }
 
 sub push {
@@ -247,6 +284,8 @@ sub step {
     $at = -1 unless defined $at;
     return $self->sequence->[ $at ];
 }
+
+# Control: ->return, ->halt, ->next
 
 package Path::WalkURI::Dispatcher::WalkerStep;
 

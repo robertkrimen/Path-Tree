@@ -16,15 +16,11 @@ sub BUILD {
     $self->push( leftover => Path::WalkURI->normalize_path( $self->path ) );
 }
 
-sub parse_rule_into_regexp {
-    my $self = shift;
-}
-
 sub consume {
     my $self = shift;
-    my $rule = shift;
+    my $input = shift;
 
-    $rule = Path::WalkURI::RegexpRule->parse( $rule ) unless ref $rule eq 'Regexp';
+    my $rule = Path::WalkURI->parse_rule( $input );
 
     return unless my $step = Path::WalkURI->consume( $self->step, $rule );
 
