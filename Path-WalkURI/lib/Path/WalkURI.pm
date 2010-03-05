@@ -18,8 +18,9 @@ sub normalize_path {
     my $self = shift;
     local $_ = shift;
 
-    $_ = "/$_";
-    s#/+#/#g;
+# TODO Reintegrate this
+#    $_ = "/$_";
+#    s#/+#/#g;
 
     return $_;
 }

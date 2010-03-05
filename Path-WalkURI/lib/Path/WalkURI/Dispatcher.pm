@@ -137,6 +137,11 @@ has children => qw/ accessor _children isa ArrayRef /, default => sub { [] };
 sub children { return @{ shift->_children } }
 has [qw/ before after end /] => qw/ is rw isa Maybe[CodeRef] /;
 
+sub add {
+    my $self = shift;
+    push @{ $self->_children }, @_;
+}
+
 package Path::WalkURI::Dispatcher::Walker;
 
 use Any::Moose;
@@ -220,6 +225,8 @@ sub consume {
 
     my $last_step = $self->step;
     
+warn $last_step->leftover;
+warn $route->rule->_regexp;
     return 0 unless my $step = Path::WalkURI->consume( $last_step, $route->rule );
 
     $step = $self->push( %$step, route => $route );
