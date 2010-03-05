@@ -5,12 +5,6 @@ use warnings;
 
 use Any::Moose;
 
-#has builder => qw/ is ro lazy_build 1 /;
-#    handles => [qw/ build_route build_walker build_step /];
-#sub _build_builder {
-#    return Path::WalkURI::Dispatcher::Builder->new;
-#}
-
 has root => qw/ is ro lazy_build 1 /;
 sub _build_root {
     my $self = shift;
@@ -46,33 +40,6 @@ sub dispatch {
     }
 
     $walker->walk;
-
-#    {
-#        if ( my $build = $given{walker} ) {
-#            $build = [ with_arguments => $build ] if ref $build eq 'CODE';
-#            if ( ref $build eq 'ARRAY' ) {
-#                my ( $by, $builder ) = @$build;
-#                $by ||= '';
-
-#                if ( $by eq 'with_arguments' ) {
-#                    $walker = $builder->( dispatcher => $self, @walker_arguments );
-#                }
-#                elsif ( $by eq 'with_walker' ) {
-#                    $walker = $builder->( dispatcher => $self,
-#                                            walker => $self->build_walker( @walker_arguments ) );
-#                }
-#                else {
-#                    die "Do not know to build walker by ($by)";
-#                }
-#            }
-#            else {
-#                die "Do not know how to build walker with builder ($build)";
-#            }
-#        }
-#        else {
-#            $walker = $self->build_walker( @walker_arguments );
-#        }
-#    }
 }
 
 sub parse_rule {
@@ -253,7 +220,7 @@ sub consume {
 
     my $last_step = $self->step;
     
-    return 0 unless my $step = Path::WalkURI->consume( $last_step, $route->rule->regexp );
+    return 0 unless my $step = Path::WalkURI->consume( $last_step, $route->rule );
 
     $step = $self->push( %$step, route => $route );
 
