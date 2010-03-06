@@ -34,19 +34,6 @@ sub consume {
 
     return unless my $match = $rule->match( $path );
 
-#    my @captured;
-#    my @match = $path =~ $regexp;
-#    if ( defined $1 ) {
-#        @captured = @match;
-#    }
-#    elsif ( $match[0] ) {
-#    }
-#    else {
-#        return;
-#    }
-
-#    my $leftover = eval q{$'};
-
     my $leftover = $match->{leftover};
     my $segment = substr $path, 0, -1 * length $leftover;
     my $prefix = $step->prefix . $step->segment;
