@@ -15,10 +15,7 @@ my ( $dispatcher );
 
 $dispatcher = Path::Walker::Dispatcher->new(
     parse_rule => {
-        '' => sub {
-            my $parser = shift;
-            return $parser->build( 'SlashPattern' => pattern => shift );
-        },
+        '' => sub { $_[0]->build( 'SlashPattern' => pattern => $_[1] ) },
     }
 );
 

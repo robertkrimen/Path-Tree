@@ -36,7 +36,8 @@ sub walk_route {
     $self->visit( $route->before ) if $route->before;
 
     for my $child ( $route->children ) {
-        if ( blessed $child ) { # && $child->does( 'Route' )
+        if ( blessed $child && $child->isa(qw/ Path::Walker::Route /) ) {
+            # TODO && $child->does( 'Route' )
             last if $self->visit_route( $child );
         }
         else {
@@ -53,7 +54,7 @@ sub visit {
     my $self = shift;
     my $data = shift;
 
-    $self->dispatcher->visit( $self->visitor, data => $data );
+    $self->dispatcher->visit( $self->visitor, walker => $self, data => $data );
 }
 
 sub visit_route {
@@ -185,6 +186,29 @@ sub match {
     my $path = shift;
 
     return $self->regexp_match( $path, $self->_regexp );
+}
+
+package Path::Walker::Rule::TokenRegexp;
+
+use Any::Moose;
+
+has tokens => qw/ is ro required 1 isa ArrayRef /;
+has delimeter => qw/ is ro required 1 isa Str /, default => ' ';
+has regexp => qw/ is ro lazy_build 1 /;
+sub _build_regexp {
+    my $self = shift;
+    my $tokens = $self->tokens;
+    my $delimeter = $self->delimeter;
+    my @tokens = grep { length } map { split $delimeter } @$tokens;
+    my $regexp = join "(?:$delimeter)*", '', @tokens, '';
+    return qr/^$regexp/;
+}
+
+sub match {
+    my $self = shift;
+    my $path = shift;
+
+    return Path::Walker::Rule::Regexp->regexp_match( $path, $self->regexp );
 }
 
 package Path::Walker::Rule::SlashPattern;
