@@ -24,38 +24,46 @@ $dispatcher = Path::Walker::Dispatcher->new(
 
 ok( $dispatcher );
 
+my @got;
 $dispatcher->plot(
 
     '/apple' => sub {
-        diag "Apple";
+        push @got, qw/Apple/;
     },
 
     '/*' => [
         '/cherry' => sub {
-            diag "Cherry";
+            push @got, qw/Cherry/;
         },
 
         '/*/*' => sub {
-            diag "/*/*";
+            push @got, qw/**/;
         },
 
         sub {
-            diag "After /*/*";
+            push @got, qw/{}/;
         },
 
         '' => sub {
-            diag "/*";
+            push @got, qw/*/;
         },
 
         -before => sub {
-            diag "Before /*";
+            push @got, qw/Before*/;
         },
     ],
 );
 
-$dispatcher->dispatch( '/apple' );
-$dispatcher->dispatch( '/apple/cherry' );
-$dispatcher->dispatch( '/banana' );
-$dispatcher->dispatch( '/banana/cherry' );
-$dispatcher->dispatch( '/banana/0/1/grape' );
-$dispatcher->dispatch( '/banana/grape' );
+sub test_dispatch {
+    my $path = shift;
+    undef @got;
+    $dispatcher->dispatch( $path );
+    cmp_deeply( \@got, [ @_ ] ) or diag "\@got = ", join ' | ', @got;
+}
+
+test_dispatch( '/apple', qw/ Apple / );
+test_dispatch( '/apple/cherry', qw/ Apple / );
+test_dispatch( '/banana', qw/ Before* {} * / );
+test_dispatch( '/banana/cherry', qw/ Before* Cherry / );
+test_dispatch( '/banana/0/1/grape', qw/ Before* ** / );
+test_dispatch( '/banana/grape', qw/ Before* {} * / );
