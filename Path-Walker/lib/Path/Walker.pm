@@ -16,6 +16,7 @@ has root => qw/ is ro required 1 /;
 
 has sequence => qw/ is ro isa ArrayRef /, default => sub { [] };
 has _step => qw/ is rw /;
+# visited, visiting
 
 has visitor => qw/ is rw isa CodeRef /;
 

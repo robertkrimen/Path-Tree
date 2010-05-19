@@ -218,6 +218,7 @@ package Path::TreeDispatcher::Branch;
 use Any::Moose;
 
 has rule => qw/ is ro /;
+# TODO sequence => children
 has sequence => qw/ is ro required 1 isa ArrayRef /, default => sub { [] };
 
 sub add {
