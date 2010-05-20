@@ -47,15 +47,15 @@ package Path::Tree::Rule::TokenRegexp;
 
 use Any::Moose;
 
-has tokens => qw/ is ro required 1 isa ArrayRef /;
+has tokenlist => qw/ is ro required 1 isa ArrayRef /;
 has delimeter => qw/ is ro required 1 isa Str /, default => ' ';
 has regexp => qw/ is ro lazy_build 1 /;
 sub _build_regexp {
     my $self = shift;
-    my $tokens = $self->tokens;
+    my $tokenlist = $self->tokenlist;
     my $delimeter = $self->delimeter;
-    my @tokens = grep { length } map { split $delimeter } @$tokens;
-    my $regexp = join "(?:$delimeter)*", '', @tokens, '';
+    my @tokenlist = grep { length } map { split $delimeter } @$tokenlist;
+    my $regexp = join "(?:$delimeter)*", '', @tokenlist, '';
     return qr/^$regexp/;
 }
 

@@ -2,10 +2,13 @@ package Path::Tree::Node;
 
 use Any::Moose;
 
+has tree => qw/ is ro /;
 has rule => qw/ is ro required 1 /;
 has children => qw/ accessor _children isa ArrayRef /, default => sub { [] };
 sub children { return @{ shift->_children } }
 #has [qw/ before after end /] => qw/ is rw isa Maybe[CodeRef] /;
+has build => qw/ is ro lazy_build 1 /;
+sub _build_build { Path::Tree::Node::build->new( tree => shift->tree ) }
 
 sub add {
     my $self = shift;
@@ -28,6 +31,26 @@ sub dispatch {
         }
     }
 
+}
+
+sub branch {
+    my $self = shift;
+}
+
+package Path::Tree::Node::build;
+
+use Any::Moose;
+
+has tree => qw/ is ro required 1 /;
+
+sub node {
+    my $self = shift;
+    my @arguments = @_;
+}
+
+sub rule {
+    my $self = shift;
+    my @arguments = @_;
 }
 
 1;
