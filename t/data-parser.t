@@ -12,6 +12,6 @@ ok( $parse->success );
 is( ref $parse->result, 'Regexp' );
 
 $parse = $parser->parse( 'xyzzy' );
-ok( !$parse->parsed );
+ok( !$parse->success );
 
 1;
