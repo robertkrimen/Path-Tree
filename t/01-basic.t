@@ -14,6 +14,7 @@ $rule = $tree->rule( qr/xyzzy/ );
 is( ref $rule, 'Path::Tree::Rule::Regexp' );
 
 $node = $tree->root->branch( qr/a\/b/ );
+
 $dispatch = $tree->dispatch( 'a/b/c/d' );
 is( $dispatch->tail->leftover, '/c/d' );
 

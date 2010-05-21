@@ -27,21 +27,37 @@ sub _build_rule_parser {
     return $parser;
 }
 
+sub parse_rule {
+    my $self = shift;
+    my $input = shift;
+    return $self->rule_parser->map( $input )->result
+}
+
+has declare => qw/ is ro lazy_build 1 /;
+sub _build_declare {
+    my $self = shift;
+    require Path::Tree::Declare;
+    return Path::Tree::Declare->new( tree => $self );
+}
+
 sub rule {
     my $self = shift;
     return $self->rule_parser unless @_;
-    return $self->rule_parser->map( $_[0] )->result if 1 == @_;
-    return $self->build_rule( @_ );
+    return $self->declare->resolve_rule( @_ );
+#    return $self->parse_rule( $_[0] ) if 1 == @_;
+##    return $self->rule_parser->map( $_[0] )->result if 1 == @_;
+#    return $self->build_rule( @_ );
 }
 
 sub node {
     my $self = shift;
-    die "Missing rule" unless @_;
-    if ( 1 == @_ ) {
-        my $rule = $self->rule( $_[0] );
-        return $self->build_node( rule => $rule );
-    }
-    return $self->build_node( @_ );
+    return $self->declare->resolve_dispatch( @_ );
+#    die "Missing rule" unless @_;
+#    if ( 1 == @_ ) {
+#        my $rule = $self->rule( $_[0] );
+#        return $self->build_node( rule => $rule );
+#    }
+#    return $self->build_node( @_ );
 }
 
 sub build_rule {
