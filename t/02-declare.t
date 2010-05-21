@@ -29,17 +29,28 @@ $tree->root->add( $declare->resolve_dispatch( qr{apple} =>
 
 ) );
 
-#dispatch qr{apple} => chain {
+$dispatch = $tree->dispatch( 'a/b/c' );
+is( $dispatch->tail->leftover, '' );
 
-#    run {
-#        diag "Apple";
-#    };
+$dispatch = $tree->dispatch( 'apple/banana' );
 
-#    dispatch qr{/banana} => to {
-#        diag "Apple/Banana";
-#    };
+use Path::Tree::Declare( $tree = Path::Tree->new );
 
-#};
+dispatch( qr{a/b/c} => run {
+    diag "Xyzzy";
+} );
+
+dispatch( qr{apple} => 
+
+    run {
+        diag "Apple";
+    },
+
+    dispatch( qr{/banana} => run {
+        diag "Apple/Banana";
+    } ),
+
+);
 
 $dispatch = $tree->dispatch( 'a/b/c' );
 is( $dispatch->tail->leftover, '' );
