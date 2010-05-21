@@ -9,21 +9,21 @@ my ( $tree, $declare, $node, $dispatch );
 $tree = Path::Tree->new;
 $declare = $tree->declare;
 
-$node = $declare->resolve_dispatch( qr/xyzzy/ => $declare->run( sub { } ) );
+$node = $declare->dispatch( qr/xyzzy/ => $declare->run( sub { } ) );
 
 ok( $node );
 
-$tree->root->add( $declare->resolve_dispatch( qr{a/b/c} => sub {
+$tree->root->add( $declare->dispatch( qr{a/b/c} => sub {
     diag "Xyzzy";
 } ) );
 
-$tree->root->add( $declare->resolve_dispatch( qr{apple} =>
+$tree->root->add( $declare->dispatch( qr{apple} =>
 
     sub {
         diag "Apple";
     },
 
-    $declare->resolve_dispatch( qr{/banana} => sub {
+    $declare->dispatch( qr{/banana} => sub {
         diag "Apple/Banana";
     } ),
 

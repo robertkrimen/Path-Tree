@@ -43,7 +43,7 @@ sub _build_declare {
 sub rule {
     my $self = shift;
     return $self->rule_parser unless @_;
-    return $self->declare->resolve_rule( @_ );
+    return $self->declare->rule( @_ );
 #    return $self->parse_rule( $_[0] ) if 1 == @_;
 ##    return $self->rule_parser->map( $_[0] )->result if 1 == @_;
 #    return $self->build_rule( @_ );
@@ -51,7 +51,7 @@ sub rule {
 
 sub node {
     my $self = shift;
-    return $self->declare->resolve_dispatch( @_ );
+    return $self->declare->dispatch( @_ );
 #    die "Missing rule" unless @_;
 #    if ( 1 == @_ ) {
 #        my $rule = $self->rule( $_[0] );
