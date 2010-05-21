@@ -80,6 +80,14 @@ sub pop {
 
 sub visit {
     my $self = shift;
+    my $data = shift;
+
+    if ( ref $data eq 'CODE' ) {
+        return $data->( $self );
+    }
+    else {
+        die "Do not know how to visit data (", defined $data ? $data : 'undef', ")";
+    }
 }
 
 package Path::Tree::DispatchVisit;
