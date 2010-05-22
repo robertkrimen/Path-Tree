@@ -16,21 +16,21 @@ use Package::Pkg;
 has root => qw/ is rw lazy_build 1 /;
 sub _build_root {
     my $self = shift;
-    return $self->build_node( tree => $self, rule => $self->build_rule( 'Always' ) );
+    return $self->node( $self->declare->always );
 }
 
-has rule_parser => qw/ is ro lazy_build 1 /;
-sub _build_rule_parser {
+has _parse_rule => qw/ is ro lazy_build 1 /;
+sub _build__parse_rule {
     my $self = shift;
     my $parser = Path::Tree::DataMapper->new;
-    $parser->rule( 'Regexp' => sub { $self->build_rule( 'Regexp' => regexp => $_ ) } );
+    $parser->rule( 'Regexp' => sub { $self->declare->rule( 'Regexp' => regexp => $_ ) } );
     return $parser;
 }
 
 sub parse_rule {
     my $self = shift;
     my $input = shift;
-    return $self->rule_parser->map( $input )->result
+    return $self->_parse_rule->map( $input )->result
 }
 
 has declare => qw/ is ro lazy_build 1 /;
@@ -42,36 +42,13 @@ sub _build_declare {
 
 sub rule {
     my $self = shift;
-    return $self->rule_parser unless @_;
+    return $self->_parse_rule unless @_;
     return $self->declare->rule( @_ );
-#    return $self->parse_rule( $_[0] ) if 1 == @_;
-##    return $self->rule_parser->map( $_[0] )->result if 1 == @_;
-#    return $self->build_rule( @_ );
 }
 
 sub node {
     my $self = shift;
-    return $self->declare->dispatch( @_ );
-#    die "Missing rule" unless @_;
-#    if ( 1 == @_ ) {
-#        my $rule = $self->rule( $_[0] );
-#        return $self->build_node( rule => $rule );
-#    }
-#    return $self->build_node( @_ );
-}
-
-sub build_rule {
-    my $self = shift;
-    my $moniker = shift;
-    die "Invalid rule arguments (@_)" if @_ % 2;
-    return pkg->load_name( $self, 'Rule', $moniker )->new( @_ );
-}
-
-sub build_node {
-    my $self = shift;
-    my @moniker;
-    push @moniker, shift if @_ % 2;
-    return pkg->load_name( $self, 'Node', @moniker )->new( tree => $self, @_ );
+    return $self->declare->node( @_ );
 }
 
 sub dispatch {

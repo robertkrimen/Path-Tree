@@ -7,7 +7,7 @@ my ( $tree, $rule, $node, $dispatch );
 
 $tree = Path::Tree->new;
 
-$rule = $tree->build_rule( 'Always' );
+$rule = $tree->declare->rule( $tree->declare->rule_class( 'Always' ) );
 is( ref $rule, 'Path::Tree::Rule::Always' );
 
 $rule = $tree->rule( qr/xyzzy/ );
@@ -17,6 +17,7 @@ $node = $tree->root->branch( qr/a\/b/ );
 
 $dispatch = $tree->dispatch( 'a/b/c/d' );
 is( $dispatch->tail->leftover, '/c/d' );
+
 
 
 
