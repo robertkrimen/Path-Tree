@@ -22,7 +22,7 @@ sub map {
         return $self->value_cache->{$input} if exists $self->value_cache->{$input};
     }
     else {
-        return $self->type_cache->{$input} if exists $self->type_cache->{$input};
+        return $self->type_cache->{$type} if exists $self->type_cache->{$type};
     }
 
     my @rulelist = @{ $self->rulelist };
@@ -31,9 +31,18 @@ sub map {
 
         if ( $rule->matcher ) { next unless $rule->match( $input ) }
 
-        @result = $rule->map( $input );
+        next unless @result = $rule->map( $input );
 
-        last if @result;
+        if ( $rule->static_map && $rule->matcher ) {
+            if ( $rule->match_input_type ) {
+                $self->type_cache->{$type} = $result[0];
+            }
+            elsif ( ref $rule->matcher eq '' ) {
+                $self->value_cache->{$input} = $result[0];
+            }
+        }
+
+        last if 1;
     }
 
     unless ( @result ) {

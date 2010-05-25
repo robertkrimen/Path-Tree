@@ -61,7 +61,7 @@ sub node_class {
     my $self = shift;
     my $moniker = 'Node';
     $moniker = shift if @_;
-    return TAG node_class => pkg->load_name( $self->tree, $moniker );
+    return TAG node_class => $self->tree->loader->load( $moniker );
 }
 
 sub node {
@@ -92,7 +92,7 @@ sub node_build {
     my $build = shift;
 
     my $class = $build->{class} || $build->{default_class};
-    my $node = $class->new( @{ $build->{arguments} } );
+    my $node = $self->tree->_build_node( $class => @{ $build->{arguments} } );
     $node->add( @{ $build->{add} } ) if $build->{add};
     return $node;
 }
@@ -142,7 +142,7 @@ sub rule_class {
     my $self = shift;
     die "Missing rule class" unless @_;
     my $moniker = shift;
-    return TAG rule_class => pkg->load_name( $self->tree, 'Rule', $moniker );
+    return TAG rule_class => $self->tree->loader->load( 'Rule', $moniker );
 }
 
 sub rule {
@@ -159,13 +159,12 @@ sub rule {
         if      ( $name eq 'class' )        { $class = $self->rule_class( $data )->data0 }
         elsif   ( $name eq 'rule_class' )   { $class = $data }
         else                                { die "Invalid tag ($name)" }
-        return $class->new();
+        return $self->tree->_build_rule( $class );
     }
 
     my $moniker = shift @arguments;
-    die "Invalid rule arguments (@arguments)" if @arguments % 2;
     my $class = $self->rule_class( $moniker )->data0;
-    return $class->new( @arguments );
+    return $self->tree->_build_rule( $class => @arguments );
 }
 
 package Path::Tree::Declare::Tag;

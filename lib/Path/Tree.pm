@@ -37,14 +37,37 @@ sub parse_rule {
 has declare => qw/ is ro lazy_build 1 /;
 sub _build_declare {
     my $self = shift;
-    require Path::Tree::Declare;
-    return Path::Tree::Declare->new( tree => $self );
+    return $self->loader->load( 'Declare' )->new( tree => $self );
 }
 
-sub rule {
+has loader => qw/ is ro lazy_build 1 /;
+sub _build_loader {
     my $self = shift;
-    return $self->_parse_rule unless @_;
-    return $self->declare->rule( @_ );
+    return Package::Pkg->loader( $self->_loader_arguments );
+}
+
+sub _loader_arguments {
+    my $self = shift;
+    my @arguments;
+    push @arguments, ref $self;
+    push @arguments, 'Path::Tree' unless $arguments[0] eq 'Path::Tree';
+    return @arguments;
+}
+
+sub dispatch {
+    my $self = shift;
+    my $path = shift;
+    my $dispatch = $self->_build_dispatch( path => $path );
+    $self->root->dispatch( $dispatch );
+    return $dispatch;
+}
+
+sub _build_dispatch {
+    my $self = shift;
+    my @moniker;
+    push @moniker, shift if @_ % 2;
+    my $class = $self->loader->load( 'Dispatch', @moniker );
+    return $class->new( @_ );
 }
 
 sub node {
@@ -52,19 +75,29 @@ sub node {
     return $self->declare->node( @_ );
 }
 
-sub dispatch {
+sub _build_node {
     my $self = shift;
-    my $path = shift;
-    my $dispatch = $self->build_dispatch( path => $path );
-    $self->root->dispatch( $dispatch );
-    return $dispatch;
+    my ( $class, @arguments ) = @_;
+    die "Invalid node arguments (@arguments)" if @arguments % 2;
+    return $class->new( tree => $self, @arguments );
 }
 
-sub build_dispatch {
+sub build_rule {
     my $self = shift;
-    my @moniker;
-    push @moniker, shift if @_ % 2;
-    return pkg->load_name( $self, 'Dispatch', @moniker )->new( @_ );
+    $self->declare->rule( @_ );
+}
+
+sub rule {
+    my $self = shift;
+    return $self->_parse_rule unless @_;
+    return $self->build_rule( @_ );
+}
+
+sub _build_rule {
+    my $self = shift;
+    my ( $class, @arguments ) = @_;
+    die "Invalid rule arguments (@arguments)" if @arguments % 2;
+    return $class->new( @arguments );
 }
 
 1;
