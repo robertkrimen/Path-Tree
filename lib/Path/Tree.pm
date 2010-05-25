@@ -9,7 +9,7 @@ use Any::Moose;
 use Path::Tree::Rule;
 use Path::Tree::Node;
 use Path::Tree::Dispatch;
-use Path::Tree::DataMapper;
+use Path::Tree::DataMap;
 
 use Package::Pkg;
 
@@ -22,15 +22,16 @@ sub _build_root {
 has _parse_rule => qw/ is ro lazy_build 1 /;
 sub _build__parse_rule {
     my $self = shift;
-    my $parser = Path::Tree::DataMapper->new;
-    $parser->rule( 'Regexp' => sub { $self->declare->rule( 'Regexp' => regexp => $_ ) } );
+    my $parser = Path::Tree::DataMap->new;
+    $parser->rule( type => 'Regexp',
+                   sub  { $self->declare->rule( 'Regexp' => regexp => $_ ) } );
     return $parser;
 }
 
 sub parse_rule {
     my $self = shift;
     my $input = shift;
-    return $self->_parse_rule->map( $input )->result
+    return $self->_parse_rule->map( $input );
 }
 
 has declare => qw/ is ro lazy_build 1 /;
