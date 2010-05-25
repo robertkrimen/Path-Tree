@@ -4,36 +4,37 @@ use Any::Moose;
 
 use Try::Tiny;
 
+has tree => qw/ is ro required 1 /;
 has path => qw/ is rw required 1 isa Str /;
 
-has _visited => qw/ is ro isa ArrayRef /, default => sub { [] };
-sub visited {
+has _trail => qw/ is ro isa ArrayRef /, default => sub { [] };
+sub trail {
     my $self = shift;
-    return @{ $self->_visited } unless @_;
+    return @{ $self->_trail } unless @_;
     my $ii = shift;
     $ii = -1 unless defined $ii;
-    return $self->_visited->[ $ii ];
+    return $self->_trail->[ $ii ];
 }
 
 sub head {
     my $self = shift;
-    return $self->_visited->[ 0 ];
+    return $self->_trail->[ 0 ];
 }
 
 sub tail {
     my $self = shift;
-    return $self->_visited->[ -1 ];
+    return $self->_trail->[ -1 ];
 }
 
 sub consume {
     my $self = shift;
     my $node = shift;
 
-    my ( $path, $visit, $lvisit, $lprefix, $lsegment );
-    if ( $lvisit = $self->tail ) {
-        $path = $lvisit->leftover;
-        $lprefix = $lvisit->prefix;
-        $lsegment = $lvisit->segment;
+    my ( $path, $visit, $lstep, $lprefix, $lsegment );
+    if ( $lstep = $self->tail ) {
+        $path = $lstep->leftover;
+        $lprefix = $lstep->prefix;
+        $lsegment = $lstep->segment;
     }
     else {
         $path = $self->path;
@@ -48,7 +49,7 @@ sub consume {
         my $segment = substr $path, 0, -1 * length $leftover;
         my $prefix = join '', $lprefix, $lsegment;
 
-        $visit = $self->push(
+        $visit = $self->push_step(
             match => $match,
             segment => $segment,
             prefix => $prefix,
@@ -60,21 +61,16 @@ sub consume {
     return 1;
 }
 
-sub push {
+sub push_step {
     my $self = shift;
-    my $visit = $self->_visit( @_ );
-    push @{ $self->_visited }, $visit;
-    return $visit;
+    my $step = $self->tree->_build_dispatch_step( @_ );
+    push @{ $self->_trail }, $step;
+    return $step;
 }
 
-sub _visit {
+sub pop_step {
     my $self = shift;
-    return Path::Tree::DispatchVisit->new( @_ );
-}
-
-sub pop {
-    my $self = shift;
-    pop @{ $self->_visited };
+    pop @{ $self->_trail };
     # TODO Cannot pop off the last (first) one
 }
 
@@ -90,7 +86,7 @@ sub visit {
     }
 }
 
-package Path::Tree::DispatchVisit;
+package Path::Tree::DispatchStep;
 
 use Any::Moose;
 
@@ -100,15 +96,13 @@ has captured => qw/ is ro isa ArrayRef /, default => sub { [] };
 
 1;
 
-1;
-
 __END__
 
 has dispatcher => qw/ is ro required 1 /;
 
 has path => qw/ accessor initial_path required 1 isa Str /;
 
-has visited => qw/ is ro isa ArrayRef /, default => sub { [] };
+has trail => qw/ is ro isa ArrayRef /, default => sub { [] };
 
 has visitor => qw/ is rw isa CodeRef /;
 

@@ -59,9 +59,10 @@ sub dispatch {
 
 sub node_class {
     my $self = shift;
-    my $moniker = 'Node';
-    $moniker = shift if @_;
-    return TAG node_class => $self->tree->loader->load( $moniker );
+    my $class;
+    if ( @_ )   { $self->Tree->loader->load( $_[0] ) }
+    else        { $class = $self->tree->node_class }
+    return TAG node_class => $class;
 }
 
 sub node {

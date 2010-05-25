@@ -22,7 +22,7 @@ is( $dispatch->tail->leftover, '/c/d' );
 
 
 $node = Path::Tree::Node->new( rule => Path::Tree::Rule::Always->new );
-$dispatch = Path::Tree::Dispatch->new( path => 'a/b/c/d' );
+$dispatch = Path::Tree::Dispatch->new( path => 'a/b/c/d', tree => $tree );
 $node->dispatch( $dispatch );
 is( $dispatch->tail->leftover, 'a/b/c/d' );
 

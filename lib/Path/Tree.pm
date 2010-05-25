@@ -62,13 +62,26 @@ sub dispatch {
     return $dispatch;
 }
 
+has dispatch_class => qw/ is rw isa Str lazy_build 1 /;
+sub _build_dispatch_class { $_[0]->loader->load( 'Dispatch' ) }
+
+has dispatch_step_class => qw/ is rw isa Str lazy_build 1  /;
+sub _build_dispatch_step_class { $_[0]->loader->load( 'DispatchStep' ) }
+
 sub _build_dispatch {
     my $self = shift;
-    my @moniker;
-    push @moniker, shift if @_ % 2;
-    my $class = $self->loader->load( 'Dispatch', @moniker );
+    my $class = $self->dispatch_class;
+    return $class->new( tree => $self, @_ );
+}
+
+sub _build_dispatch_step {
+    my $self = shift;
+    my $class = $self->dispatch_step_class;
     return $class->new( @_ );
 }
+
+has node_class => qw/ is rw isa Str lazy_build 1 /;
+sub _build_node_class { $_[0]->loader->load( 'Node' ) }
 
 sub node {
     my $self = shift;
