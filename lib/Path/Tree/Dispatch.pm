@@ -30,7 +30,7 @@ sub consume {
     my $self = shift;
     my $node = shift;
 
-    my ( $path, $visit, $lstep, $lprefix, $lsegment );
+    my ( $path, $step, $lstep, $lprefix, $lsegment );
     if ( $lstep = $self->tail ) {
         $path = $lstep->leftover;
         $lprefix = $lstep->prefix;
@@ -40,16 +40,15 @@ sub consume {
         $path = $self->path;
         $lprefix = $lsegment = '';
     }
-    my $rule = $node->rule;
     
-    return 0 unless my $match = $rule->match( $path );
+    return 0 unless my $match = $node->match( $path );
 
     {
         my $leftover = $match->{leftover};
         my $segment = substr $path, 0, -1 * length $leftover;
         my $prefix = join '', $lprefix, $lsegment;
 
-        $visit = $self->push_step(
+        $step = $self->push_step(
             match => $match,
             segment => $segment,
             prefix => $prefix,

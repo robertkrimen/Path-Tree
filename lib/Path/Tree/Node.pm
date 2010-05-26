@@ -29,11 +29,22 @@ sub dispatch {
         }
     }
 
+    return 1;
+}
+
+sub match {
+    my $self = shift;
+    return unless my $match = $self->rule->match( @_ );
+    $self->matched( $match );
+    return $match;
+}
+
+sub matched {
 }
 
 sub branch {
     my $self = shift;
-    my $node = $self->tree->node( $_[0] );
+    my $node = $self->tree->node( @_ );
     $self->add( $node );
     return $node;
 }

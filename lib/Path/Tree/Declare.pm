@@ -118,9 +118,7 @@ sub node_tag_argument {
 
 sub node_argument {
     my $self = shift;
-    my $build = shift;
-    my $ii = shift;
-    my $argument = shift;
+    my ( $build, $ii, $argument ) = @_;
 
     if ( 0 == $ii && ! $build->{rule} ) {
         $build->{rule} = 1;
