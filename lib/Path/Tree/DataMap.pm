@@ -52,7 +52,7 @@ sub map {
                 @result = $fallback->( $_ );
             }
             else {
-                @result =  $fallback->map( $input );
+                @result = $fallback->map( $input );
             }
         }
     }

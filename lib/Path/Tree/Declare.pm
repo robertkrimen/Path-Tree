@@ -31,6 +31,8 @@ sub import {
         node =>         sub     { $declare->node( @_ ) },
         rule =>         sub     { $declare->rule( @_ ) },
         run =>          sub (&) { $declare->run( @_ ) },
+        then =>         sub (&) { $declare->then( @_ ) },
+        test =>         sub (&) { $declare->test( @_ ) },
         class =>        sub     { $declare->class( @_ ) },
         rule_class =>   sub     { $declare->rule_class( @_ ) },
         node_class =>   sub     { $declare->node_class( @_ ) },
@@ -42,7 +44,7 @@ sub import {
 
 {
     no strict 'refs';
-    for my $name (qw/ class arguments run /) {
+    for my $name (qw/ class arguments run then test /) {
         *$name = sub { TAG $name => splice @_, 1 }
     }
 }
@@ -72,6 +74,7 @@ sub node {
     my $build = {};
     $build->{default_class} = $self->node_class->data0;
     $build->{arguments} = [ tree => $self->tree ];
+    $build->{rulelist} = [ ];
 
     my $ii = 0;
     for my $argument ( @arguments ) {
@@ -93,7 +96,10 @@ sub node_build {
     my $build = shift;
 
     my $class = $build->{class} || $build->{default_class};
-    my $node = $self->tree->_build_node( $class => @{ $build->{arguments} } );
+    my $node = $self->tree->_build_node( $class =>
+        rule => $build->{rulelist}->[0],
+        @{ $build->{arguments} }
+    );
     $node->add( @{ $build->{add} } ) if $build->{add};
     return $node;
 }
@@ -104,12 +110,12 @@ sub node_tag_argument {
     my $argument = shift;
 
     my ( $name, $data ) = $argument->head;
-    if      ( $name eq 'rule' ) {
-        die "Duplicate rule" if $build->{rule};
-        $build->{rule} = 1;
-        push @{ $build->{arguments} }, rule => $data
-    }
-    elsif   ( $name eq 'class' )      { $build->{class} = $self->node_class( $data )->data0 }
+#    if      ( $name eq 'rule' ) {
+#        die "Duplicate rule" if $build->{rule};
+#        $build->{rule} = 1;
+#        push @{ $build->{arguments} }, rule => $data
+#    }
+    if      ( $name eq 'class' )      { $build->{class} = $self->node_class( $data )->data0 }
     elsif   ( $name eq 'node_class' ) { $build->{class} = $data }
     elsif   ( $name eq 'arguments' )  { push @{ $build->{arguments} }, @$data }
     elsif   ( $name eq 'run' )        { push @{ $build->{add} }, $data }
@@ -120,16 +126,20 @@ sub node_argument {
     my $self = shift;
     my ( $build, $ii, $argument ) = @_;
 
-    if ( 0 == $ii && ! $build->{rule} ) {
+    # TODO If not in a sane order?
+    if      ( blessed $argument && $argument->isa( 'Path::Tree::Node' ) ) {
+        push @{ $build->{add} }, $argument;
+    }
+    elsif   ( blessed $argument && $argument->isa( 'Path::Tree::Rule' ) ) {
+        push @{ $build->{rulelist} }, $argument;
+    }
+    elsif   ( 0 == $ii && ! $build->{rule} ) {
         $build->{rule} = 1;
         my $rule = $argument;
         $rule = $self->rule( $argument ) unless blessed $rule && $rule->can( 'match' );
-        push @{ $build->{arguments} }, rule => $rule;
+        push @{ $build->{rulelist} }, $rule;
     }
-    elsif ( ref $argument eq 'CODE' ) {
-        push @{ $build->{add} }, $argument;
-    }
-    elsif ( blessed $argument && $argument->isa( 'Path::Tree::Node' ) ) {
+    elsif   ( ref $argument eq 'CODE' ) {
         push @{ $build->{add} }, $argument;
     }
     else {
@@ -171,6 +181,7 @@ package Path::Tree::Declare::Tag;
 use Any::Moose;
 
 has name => qw/ is ro required 1 isa Str /;
+sub tag { $_[0]->name }
 has data => qw/ is ro lazy_build 1 predicate _has_data isa ArrayRef /;
 sub _build_data { [] }
 sub data0 { shift->data->[0] }

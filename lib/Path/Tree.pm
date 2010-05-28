@@ -25,6 +25,8 @@ sub _build__parse_rule {
     my $parser = Path::Tree::DataMap->new;
     $parser->rule( type => 'Regexp',
                    sub  { $self->declare->rule( 'Regexp' => regexp => $_ ) } );
+    $parser->rule( type => 'ARRAY',
+                   sub  { $self->declare->rule( 'RegexpToken' => tokenlist => $_ ) } );
     return $parser;
 }
 
@@ -32,6 +34,12 @@ sub parse_rule {
     my $self = shift;
     my $input = shift;
     return $self->_parse_rule->map( $input );
+}
+
+has parse => qw/ is ro lazy_build 1 /;
+sub _build_parse {
+    my $self = shift;
+    return $self->loader->load( 'Parse' )->new( tree => $self );
 }
 
 has declare => qw/ is ro lazy_build 1 /;

@@ -55,7 +55,7 @@ sub _build_regexp {
     my $tokenlist = $self->tokenlist;
     my $delimeter = $self->delimeter;
     my @tokenlist = grep { length } map { split $delimeter } @$tokenlist;
-    my $regexp = join "(?:$delimeter)*", '', @tokenlist, '';
+    my $regexp = join "(?:$delimeter)*", '', @tokenlist;
     return qr/^$regexp/;
 }
 
