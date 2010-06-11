@@ -41,7 +41,9 @@ sub consume {
         $lprefix = $lsegment = '';
     }
     
+#warn $node->rule->regexp if $node->rule->can( 'regexp' );
     return 0 unless my $match = $node->match( $path );
+#warn "%$match [$path]";
 
     {
         my $leftover = $match->{leftover};

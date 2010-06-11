@@ -13,17 +13,17 @@ $node = $declare->dispatch( qr/xyzzy/ => $declare->run( sub { } ) );
 
 ok( $node );
 
-$tree->root->add( $declare->dispatch( qr{a/b/c} => sub {
+$tree->root->add( $declare->node( qr{a/b/c} => sub {
     diag "Xyzzy";
 } ) );
 
-$tree->root->add( $declare->dispatch( qr{apple} =>
+$tree->root->add( $declare->node( qr{apple} =>
 
     sub {
         diag "Apple";
     },
 
-    $declare->dispatch( qr{/banana} => sub {
+    $declare->node( qr{/banana} => sub {
         diag "Apple/Banana";
     } ),
 
@@ -46,7 +46,7 @@ dispatch( qr{apple} =>
         diag "Apple";
     },
 
-    dispatch( qr{/banana} => run {
+    node( qr{/banana} => run {
         diag "Apple/Banana";
     } ),
 

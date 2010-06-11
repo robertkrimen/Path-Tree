@@ -56,8 +56,8 @@ sub parse_node_children_tagged {
     my $stream = shift;
 
     my $tag = $argument->tag;
-    if      ( $tag eq 'run' )       { return $argument->data0 }
-    elsif   ( $tag eq 'then' )      { return $argument->data0 }
+    if      ( $tag eq 'run' )       { return $argument->data }
+    elsif   ( $tag eq 'then' )      { return $argument->data }
     else                            { die "Invalid argument ($argument)" }
 }
 
@@ -85,9 +85,9 @@ sub parse_node {
         }
         elsif ( blessed $argument && $argument->isa( 'Path::Tree::Declare::Tag' ) ) {
             my $tag = $argument->tag;
-            if      ( $tag eq 'run' )       { push @node, $argument->data0 }
-            elsif   ( $tag eq 'then' )      { push @node, $argument->data0 }
-            elsif   ( $tag eq 'test' )      { push @rulelist, $declare->rule( $argument->data0 ) }
+            if      ( $tag eq 'run' )       { push @node, $argument->data }
+            elsif   ( $tag eq 'then' )      { push @node, $argument->data }
+            elsif   ( $tag eq 'test' )      { push @rulelist, $declare->rule( $argument->data ) }
             else                            { die "Invalid argument ($tag)" }
             last;
         }

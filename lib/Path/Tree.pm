@@ -33,7 +33,9 @@ sub _build__parse_rule {
 sub parse_rule {
     my $self = shift;
     my $input = shift;
-    return $self->_parse_rule->map( $input );
+    my $rule = $self->_parse_rule->map( $input );
+    die "Unable to parse rule from input ($input)" unless defined $rule;
+    return $rule;
 }
 
 has parse => qw/ is ro lazy_build 1 /;

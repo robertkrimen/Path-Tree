@@ -9,24 +9,17 @@ use Package::Pkg;
 
 has tree => qw/ is ro required 1 /;
 
-sub TAG (@) {
-    my @arguments;
-    push @arguments, name => shift;
-    push @arguments, data => [ @_ ] if @_;
-    my $tag = Path::Tree::Declare::Tag->new( @arguments );
-#    warn $tag->head, " < @_";
-    return $tag;
-}
+sub TAG (@);
 
-sub import {
-    my @arguments = splice @_, 1;
+sub LEXICON {
+    my $self = shift;
+    my $declare;
+    if ( @_ ) { $declare = shift }
+    elsif ( ! @_ && blessed $self )    { $declare = shift }
+    else                               { $declare = shift }
+    die "Missing declare" unless $declare;
 
-    die "Missing tree" unless @arguments;
-    my $tree = shift @arguments;
-    die "Invalid tree ($tree)" unless blessed $tree && $tree->isa( 'Path::Tree' );
-    my $declare = $tree->declare;
-
-    my $exporter = pkg->exporter(
+    return pkg->lexicon(
         dispatch =>     sub     { $declare->dispatch( @_ ) },
         node =>         sub     { $declare->node( @_ ) },
         rule =>         sub     { $declare->rule( @_ ) },
@@ -38,6 +31,18 @@ sub import {
         node_class =>   sub     { $declare->node_class( @_ ) },
         arguments =>    sub     { $declare->arguments( @_ ) },
     );
+}
+
+sub import {
+    my $class = $_[0];
+    my @arguments = splice @_, 1;
+
+    die "Missing tree" unless @arguments;
+    my $tree = shift @arguments;
+    die "Invalid tree ($tree)" unless blessed $tree && $tree->isa( 'Path::Tree' );
+    my $declare = $tree->declare;
+
+    my $exporter = pkg->exporter( $class->LEXICON( $declare )->export );
 
     goto &$exporter;
 }
@@ -51,18 +56,18 @@ sub import {
 
 sub always {
     my $self = shift;
-    return $self->rule_class( 'Always' )->data0->new();
+    return $self->rule_class( 'Always' )->data->new();
 }
 
 sub dispatch {
     my $self = shift;
-    return $self->node( @_ );
+    $self->tree->root->add( $self->tree->parse->parse_node_children([ @_ ]) );
 }
 
 sub node_class {
     my $self = shift;
     my $class;
-    if ( @_ )   { $self->Tree->loader->load( $_[0] ) }
+    if ( @_ )   { $self->tree->loader->load( $_[0] ) }
     else        { $class = $self->tree->node_class }
     return TAG node_class => $class;
 }
@@ -72,7 +77,7 @@ sub node {
     my @arguments = @_;
 
     my $build = {};
-    $build->{default_class} = $self->node_class->data0;
+    $build->{default_class} = $self->node_class->data;
     $build->{arguments} = [ tree => $self->tree ];
     $build->{rulelist} = [ ];
 
@@ -109,17 +114,17 @@ sub node_tag_argument {
     my $build = shift;
     my $argument = shift;
 
-    my ( $name, $data ) = $argument->head;
+    my ( $tag, $data ) = $argument->tag_data;
 #    if      ( $name eq 'rule' ) {
 #        die "Duplicate rule" if $build->{rule};
 #        $build->{rule} = 1;
 #        push @{ $build->{arguments} }, rule => $data
 #    }
-    if      ( $name eq 'class' )      { $build->{class} = $self->node_class( $data )->data0 }
-    elsif   ( $name eq 'node_class' ) { $build->{class} = $data }
-    elsif   ( $name eq 'arguments' )  { push @{ $build->{arguments} }, @$data }
-    elsif   ( $name eq 'run' )        { push @{ $build->{add} }, $data }
-    else                              { die "Invalid tag ($name)" }
+    if      ( $tag eq 'class' )      { $build->{class} = $self->node_class( $data )->data }
+    elsif   ( $tag eq 'node_class' ) { $build->{class} = $data }
+    elsif   ( $tag eq 'arguments' )  { push @{ $build->{arguments} }, @$data }
+    elsif   ( $tag eq 'run' )        { push @{ $build->{add} }, $data }
+    else                             { die "Invalid tag ($tag)" }
 }
 
 sub node_argument {
@@ -163,38 +168,41 @@ sub rule {
     if ( 1 == @arguments ) {
         return $self->tree->parse_rule( @arguments ) unless
             blessed $arguments[0] && $arguments[0]->isa( 'Path::Tree::Declare::Tag' );
-        my ( $name, $data ) = $arguments[0]->head;
+        my ( $tag, $data ) = $arguments[0]->tag_data;
         my $class;
-        if      ( $name eq 'class' )        { $class = $self->rule_class( $data )->data0 }
-        elsif   ( $name eq 'rule_class' )   { $class = $data }
-        else                                { die "Invalid tag ($name)" }
+        if      ( $tag eq 'class' )        { $class = $self->rule_class( $data )->data }
+        elsif   ( $tag eq 'rule_class' )   { $class = $data }
+        else                               { die "Invalid tag ($tag)" }
         return $self->tree->_build_rule( $class );
     }
 
     my $moniker = shift @arguments;
-    my $class = $self->rule_class( $moniker )->data0;
+    my $class = $self->rule_class( $moniker )->data;
     return $self->tree->_build_rule( $class => @arguments );
+}
+
+sub TAG (@) {
+    my @arguments;
+    push @arguments, tag => shift;
+    push @arguments, data => ( @_ > 1 ? [ @_ ] : $_[0] );
+    my $tag = Path::Tree::Declare::Tag->new( @arguments );
+    return $tag;
 }
 
 package Path::Tree::Declare::Tag;
 
 use Any::Moose;
 
-has name => qw/ is ro required 1 isa Str /;
-sub tag { $_[0]->name }
-has data => qw/ is ro lazy_build 1 predicate _has_data isa ArrayRef /;
-sub _build_data { [] }
-sub data0 { shift->data->[0] }
-sub empty {
+has tag => qw/ is ro required 1 isa Str /;
+sub name { $_[0]->tag }
+has data => qw/ is ro predicate _has_data /;
+
+sub tag_data {
     my $self = shift;
-    return 1 unless $self->_has_data;
-    return scalar @{ $self->data } ? 0 : 1;
-}
-sub head {
-    my $self = shift;
-    my @head = ( $self->name );
-    push @head, $self->data0 unless $self->empty;
-    return @head;
+    my @get = ( $self->name );
+    push @get, $self->data if $self->_has_data;
+    return @get;
+    
 }
 
 1;
